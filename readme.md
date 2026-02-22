@@ -1,5 +1,8 @@
 # auspex
 
+### NPM
+https://www.npmjs.com/package/auspex
+
 Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e um **prompt em linguagem natural** — o agent decide sozinho se basta uma requisicao HTTP ou se precisa abrir o Playwright, navega, clica, preenche formularios e retorna o resultado com um relatorio completo.
 
 ---
