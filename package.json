@@ -1,0 +1,54 @@
+{
+  "name": "auspex",
+  "version": "0.1.0",
+  "description": "AI-powered browser agent with tiered scraping — HTTP/Cheerio first, Playwright as fallback",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "readme.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "example": "tsx examples/basic.ts",
+    "example:scraper": "tsx examples/scraper.ts",
+    "install:browser": "playwright install chromium"
+  },
+  "keywords": [
+    "auspex",
+    "browser",
+    "automation",
+    "ai",
+    "agent",
+    "playwright",
+    "scraping",
+    "cheerio",
+    "llm"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "cheerio": "^1.2.0",
+    "got-scraping": "^4.0.4",
+    "jsdom": "^25.0.1",
+    "openai": "^4.77.0",
+    "playwright": "^1.49.0",
+    "playwright-core": "^1.49.0",
+    "turndown": "^7.2.2",
+    "turndown-plugin-gfm": "^1.0.2",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.7",
+    "@types/node": "^22.10.0",
+    "@types/turndown": "^5.0.6",
+    "dotenv": "^16.4.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
