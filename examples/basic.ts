@@ -12,7 +12,8 @@ async function main() {
     llmApiKey: apiKey,
     llmBaseUrl: process.env.LLM_BASE_URL,
     model: process.env.LLM_MODEL,
-    temperature: 1
+    temperature: 1,
+    timeoutMs: 180000,
   });
 
   console.log("Starting browser agent...\n");

@@ -2,17 +2,21 @@ import { validateUrl } from "../security/url-validator.js";
 import { Tier1HTTP } from "./tiers/tier1-http.js";
 import { Tier2Stealth } from "./tiers/tier2-stealth.js";
 import { Tier3Browser } from "./tiers/tier3-browser.js";
+import { extractLinksWithMetadata } from "./extractors/content.js";
 import type {
-  FirecrawlConfig,
+  MapLink,
+  MapOptions,
+  MapResult,
   ScrapeOptions,
   ScrapeResult,
+  ScraperConfig,
 } from "./types.js";
 
-// ─── Firecrawl ─────────────────────────────────────────────────────────────
+// ─── Scraper ───────────────────────────────────────────────────────────────
 //
 // Scraper de alta qualidade com fallback automático em 3 tiers:
 //
-//   Tier 1 → HTTP puro (fetch nativo)         (~100-500ms, sem browser)
+//   Tier 1 → HTTP puro (got-scraping)         (~100-500ms, sem browser)
 //              ↓ bloqueado ou conteúdo insuficiente (SPA, anti-bot básico)
 //   Tier 2 → HTTP Stealth (got-scraping)      (~200-800ms, TLS fingerprint)
 //              ↓ ainda bloqueado ou SPA sem SSR
@@ -21,19 +25,19 @@ import type {
 // Anti-SSRF integrado: todas as URLs são validadas antes do scrape.
 // ──────────────────────────────────────────────────────────────────────────
 
-export class Firecrawl {
+export class Scraper {
   private readonly tier1: Tier1HTTP;
   private readonly tier2: Tier2Stealth;
   private readonly tier3: Tier3Browser;
   private readonly config: {
     timeout: number;
     verbose: boolean;
-    forceTier?: FirecrawlConfig["forceTier"];
+    forceTier?: ScraperConfig["forceTier"];
     allowedDomains?: string[];
     blockedDomains?: string[];
   };
 
-  constructor(private readonly fullConfig: FirecrawlConfig = {}) {
+  constructor(private readonly fullConfig: ScraperConfig = {}) {
     this.tier1 = new Tier1HTTP();
     this.tier2 = new Tier2Stealth();
     this.tier3 = new Tier3Browser(fullConfig.browserConfig);
@@ -147,6 +151,135 @@ export class Firecrawl {
     }
   }
 
+  // ── Map: descobrir URLs de um site ──────────────────────────────────────
+
+  /**
+   * Mapeia links de uma página (URL + texto do âncora).
+   * Reutiliza a cascata de tiers (HTTP → Stealth → Browser).
+   *
+   * @param url - URL base para extrair links
+   * @param options - Filtros e limites
+   */
+  async map(url: string, options: MapOptions = {}): Promise<MapResult> {
+    const startTime = Date.now();
+    const limit = options.limit ?? 500;
+    const includeSubdomains = options.includeSubdomains ?? true;
+    const ignoreQueryParameters = options.ignoreQueryParameters ?? true;
+    const searchTerm = options.search?.toLowerCase().trim();
+
+    let scrapeResult: ScrapeResult;
+
+    try {
+      scrapeResult = await this.scrape(url, {
+        getRawHtml: true,
+        forceTier: options.forceTier,
+      });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      return {
+        url,
+        links: [],
+        tier: "http",
+        durationMs: Date.now() - startTime,
+        error: `Falha ao carregar a página: ${errorMsg}`,
+      };
+    }
+
+    if (scrapeResult.error) {
+      return {
+        url: scrapeResult.url,
+        links: [],
+        tier: scrapeResult.tier,
+        durationMs: scrapeResult.durationMs,
+        error: scrapeResult.error,
+      };
+    }
+
+    const rawHtml = scrapeResult.rawHtml ?? scrapeResult.html ?? "";
+    if (!rawHtml) {
+      return {
+        url: scrapeResult.url,
+        links: [],
+        tier: scrapeResult.tier,
+        durationMs: scrapeResult.durationMs,
+        error: "HTML não disponível para extração de links",
+      };
+    }
+
+    const baseUrl = scrapeResult.url;
+    const baseHostname = new URL(baseUrl).hostname;
+    const baseDomain = baseHostname.replace(/^www\./, "");
+
+    let links = extractLinksWithMetadata(rawHtml, baseUrl);
+
+    // Filtrar por mesmo domínio
+    links = links.filter((link) => {
+      try {
+        const linkHost = new URL(link.url).hostname.replace(/^www\./, "");
+        if (includeSubdomains) {
+          return linkHost === baseDomain || linkHost.endsWith(`.${baseDomain}`);
+        }
+        return linkHost === baseDomain;
+      } catch {
+        return false;
+      }
+    });
+
+    // Normalizar URL (remover query string) e deduplicar
+    const normalizeUrl = (href: string): string => {
+      if (!ignoreQueryParameters) return href;
+      try {
+        const u = new URL(href);
+        u.search = "";
+        return u.href;
+      } catch {
+        return href;
+      }
+    };
+
+    const seen = new Set<string>();
+    const deduped: MapLink[] = [];
+    for (const link of links) {
+      const key = ignoreQueryParameters ? normalizeUrl(link.url) : link.url;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push({
+        url: link.url,
+        title: link.title || undefined,
+      });
+    }
+    links = deduped;
+
+    // Filtrar e ordenar por search (relevância simples)
+    if (searchTerm) {
+      const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "gi");
+      const scored = links
+        .map((link) => {
+          const urlLower = link.url.toLowerCase();
+          const titleLower = (link.title ?? "").toLowerCase();
+          const urlMatches = (urlLower.match(regex) ?? []).length;
+          const titleMatches = (titleLower.match(regex) ?? []).length;
+          const score = urlMatches * 2 + titleMatches * 3; // title tem mais peso
+          return { link, score };
+        })
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(({ link }) => link);
+      links = scored;
+    }
+
+    const result: MapResult = {
+      url: baseUrl,
+      links: links.slice(0, limit),
+      tier: scrapeResult.tier,
+      durationMs: Date.now() - startTime,
+    };
+
+    this.log(`✓ Map: ${result.links.length} links (${result.tier})`);
+    return result;
+  }
+
   // ── Scrape em lote com concorrência controlada ─────────────────────────
 
   /**
@@ -207,7 +340,7 @@ export class Firecrawl {
 
   private log(msg: string): void {
     if (this.config.verbose) {
-      console.log(`[Firecrawl] ${msg}`);
+      console.log(`[Scraper] ${msg}`);
     }
   }
 }
@@ -220,6 +353,9 @@ export type {
   ContentFormat,
   SSRData,
   InterceptedAPI,
-  FirecrawlConfig,
+  ScraperConfig,
   TierRawResult,
+  MapLink,
+  MapOptions,
+  MapResult,
 } from "./types.js";

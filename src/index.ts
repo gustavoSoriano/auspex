@@ -16,11 +16,11 @@ export type {
   SnapshotInput,
 } from "./types.js";
 
-// ── Firecrawl (scraping com fallback automático HTTP → Browser) ───────────
-export { Firecrawl } from "./scraper/index.js";
+// ── Scraper (fallback automático HTTP → Stealth → Browser) ─────────────────
+export { Scraper } from "./scraper/index.js";
 
 export type {
-  FirecrawlConfig,
+  ScraperConfig,
   ScrapeOptions,
   ScrapeResult,
   ScrapeTier,
@@ -28,6 +28,9 @@ export type {
   SSRData,
   InterceptedAPI,
   TierRawResult,
+  MapLink,
+  MapOptions,
+  MapResult,
 } from "./scraper/index.js";
 
 // ── Segurança ─────────────────────────────────────────────────────────────

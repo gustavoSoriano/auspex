@@ -126,6 +126,53 @@ function extractLinks($: CheerioAPI, baseUrl?: string): string[] {
   return links;
 }
 
+/** Link com metadados para Map */
+export interface LinkWithMetadata {
+  url: string;
+  title?: string;
+}
+
+/**
+ * Extrai links da página com texto do âncora (title).
+ * Usado pelo map() para descobrir URLs com contexto.
+ */
+export function extractLinksWithMetadata(
+  html: string,
+  baseUrl: string,
+): LinkWithMetadata[] {
+  const $ = load(html);
+  const links: LinkWithMetadata[] = [];
+  const seen = new Set<string>();
+
+  $("a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href) return;
+    if (href.startsWith("#")) return;
+    if (href.startsWith("javascript:")) return;
+    if (href.startsWith("mailto:")) return;
+    if (href.startsWith("tel:")) return;
+
+    let resolved = href;
+    if (baseUrl && (href.startsWith("/") || href.startsWith("."))) {
+      try {
+        resolved = new URL(href, baseUrl).href;
+      } catch {
+        return;
+      }
+    }
+
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      const title = ($(el).text().trim() || $(el).attr("title") || "")
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
+      links.push({ url: resolved, title: title || undefined });
+    }
+  });
+
+  return links;
+}
+
 // ─── Extração de metadados ─────────────────────────────────────────────────
 
 function extractMeta($: CheerioAPI): { title: string; description: string } {
@@ -146,7 +193,7 @@ function extractMeta($: CheerioAPI): { title: string; description: string } {
 
 // ─── Mozilla Readability (caminho principal) ───────────────────────────────────
 //
-// Mesmo algoritmo que o Firefox usa no Reader Mode e que o Firecrawl real usa.
+// Mesmo algoritmo que o Firefox usa no Reader Mode.
 // Produz conteúdo semanticamente limpo, muito superior a heurísticas manuais.
 
 function extractWithReadability(

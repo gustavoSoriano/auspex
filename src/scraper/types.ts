@@ -1,4 +1,4 @@
-// ─── Tipos do Firecrawl ────────────────────────────────────────────────────
+// ─── Tipos do Scraper ──────────────────────────────────────────────────────
 
 /**
  * Qual tier foi usado para fazer o scrape:
@@ -23,8 +23,8 @@ export interface TierRawResult {
   sufficient: boolean;
 }
 
-/** Configuração global do Firecrawl */
-export interface FirecrawlConfig {
+/** Configuração global do Scraper */
+export interface ScraperConfig {
   /** Timeout padrão em ms. Default: 30_000 */
   timeout?: number;
 
@@ -79,6 +79,9 @@ export interface ScrapeOptions {
    */
   forceTier?: ScrapeTier;
 
+  /** Incluir HTML bruto (antes da extração de conteúdo). Útil para map(). Default: false */
+  getRawHtml?: boolean;
+
   // ── Opções exclusivas do Tier 3 (browser) ──────────────────────────────
   /** Aguardar esse seletor CSS aparecer e estar visível antes de extrair */
   waitForSelector?: string;
@@ -114,6 +117,38 @@ export interface InterceptedAPI {
   data: unknown;
 }
 
+// ─── Map (mapeamento de URLs de um site) ────────────────────────────────────
+
+/** Link descoberto no mapeamento */
+export interface MapLink {
+  url: string;
+  /** Texto do âncora (innerText do <a>) */
+  title?: string;
+}
+
+/** Opções do mapeamento */
+export interface MapOptions {
+  /** Filtrar/ordenar links por relevância a este termo */
+  search?: string;
+  /** Incluir links de subdomínios. Default: true */
+  includeSubdomains?: boolean;
+  /** Ignorar query strings (?foo=bar). Default: true */
+  ignoreQueryParameters?: boolean;
+  /** Máximo de links a retornar. Default: 500 */
+  limit?: number;
+  /** Tier forçado (igual ao scrape) */
+  forceTier?: ScrapeTier;
+}
+
+/** Resultado do mapeamento */
+export interface MapResult {
+  url: string;
+  links: MapLink[];
+  tier: ScrapeTier;
+  durationMs: number;
+  error?: string;
+}
+
 /** Resultado completo do scrape */
 export interface ScrapeResult {
   /** URL final (após redirecionamentos) */
@@ -140,6 +175,9 @@ export interface ScrapeResult {
   durationMs: number;
   /** Links encontrados na página */
   links?: string[];
+
+  /** HTML bruto (quando getRawHtml: true) */
+  rawHtml?: string;
 
   // ── Dados extras ────────────────────────────────────────────────────────
   /** Dados SSR extraídos (Next.js, Nuxt, etc.) */

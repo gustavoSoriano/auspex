@@ -128,6 +128,8 @@ export class Tier2Stealth {
       links: extracted.links.length > 0 ? extracted.links : undefined,
     };
 
+    if (options.getRawHtml) result.rawHtml = html;
+
     if (formats.includes("markdown")) result.markdown = htmlToMarkdown(extracted.html);
     if (formats.includes("html"))     result.html = extracted.html;
     if (formats.includes("text"))     result.text = extracted.text;

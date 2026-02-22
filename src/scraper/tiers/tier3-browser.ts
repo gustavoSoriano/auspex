@@ -3,7 +3,7 @@ import type {
   ScrapeOptions,
   ScrapeResult,
   InterceptedAPI,
-  FirecrawlConfig,
+  ScraperConfig,
 } from "../types.js";
 import { extractContent } from "../extractors/content.js";
 import { htmlToMarkdown } from "../extractors/to-markdown.js";
@@ -290,9 +290,9 @@ const BLOCKED_URL_PATTERNS = [
 
 export class Tier3Browser {
   private browser: Browser | null = null;
-  private readonly browserConfig: NonNullable<FirecrawlConfig["browserConfig"]>;
+  private readonly browserConfig: NonNullable<ScraperConfig["browserConfig"]>;
 
-  constructor(browserConfig: FirecrawlConfig["browserConfig"] = {}) {
+  constructor(browserConfig: ScraperConfig["browserConfig"] = {}) {
     this.browserConfig = browserConfig;
   }
 
@@ -527,6 +527,8 @@ export class Tier3Browser {
         interceptedAPIs:
           interceptedAPIs.length > 0 ? interceptedAPIs : undefined,
       };
+
+      if (options.getRawHtml) result.rawHtml = html;
 
       if (formats.includes("markdown")) result.markdown = htmlToMarkdown(extracted.html);
       if (formats.includes("html"))     result.html = extracted.html;

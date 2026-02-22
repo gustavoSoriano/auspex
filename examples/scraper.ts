@@ -1,5 +1,5 @@
 /**
- * Exemplo completo do Firecrawl — 3 tiers com fallback automático
+ * Exemplo completo do Scraper — 3 tiers com fallback automático
  *
  * Fluxo de fallback:
  *   Tier 1 (HTTP puro)          →  fetch nativo, ~100-500ms
@@ -12,7 +12,7 @@
  */
 
 import "dotenv/config";
-import { Firecrawl } from "../src/scraper/index.js";
+import { Scraper } from "../src/scraper/index.js";
 import type { ScrapeResult } from "../src/scraper/types.js";
 
 const LINE = "─".repeat(62);
@@ -71,7 +71,7 @@ function printResult(label: string, result: ScrapeResult): void {
 async function main() {
   // verbose: true → mostra no console qual tier está sendo usado e por quê
   // O browser Playwright (Tier 3) é mantido aberto e reutilizado entre requisições
-  const crawler = new Firecrawl({ verbose: true });
+  const crawler = new Scraper({ verbose: true });
 
   try {
     // ── Teste 1: Site estático → deve resolver no Tier 1 ─────────────────
@@ -129,7 +129,7 @@ async function main() {
     // ── Teste 5: Auto-fallback completo em SPA ────────────────────────────
     console.log("\n══════════════════════════════════════════════════════════════");
     console.log("  TESTE 5: Auto-fallback — Tier 1 → Tier 2 → Tier 3");
-    console.log("  Sem forceTier: o Firecrawl decide o melhor tier automaticamente.");
+    console.log("  Sem forceTier: o Scraper decide o melhor tier automaticamente.");
     console.log("══════════════════════════════════════════════════════════════");
 
     const autoFallback = await crawler.scrape("https://www.ragup.com.br/planos", {
@@ -168,7 +168,7 @@ async function main() {
   } finally {
     // SEMPRE chamar close() para liberar o processo Chromium
     await crawler.close();
-    console.log("\n✓ Firecrawl encerrado.\n");
+    console.log("\n✓ Scraper encerrado.\n");
   }
 }
 

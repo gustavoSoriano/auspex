@@ -23,6 +23,7 @@ Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e u
 - [Monitoramento — Tokens e Memoria](#monitoramento--tokens-e-memoria)
 - [Dicas de uso](#dicas-de-uso)
 - [Limitacoes](#limitacoes)
+- [Scraper e Map](#scraper-e-map)
 - [Arquitetura](#arquitetura)
 - [Variaveis de ambiente](#variaveis-de-ambiente)
 - [Tipos exportados](#tipos-exportados)
@@ -635,6 +636,44 @@ Criar um `Auspex` uma vez e chamar `run()` multiplas vezes eh mais eficiente do 
 
 ---
 
+## Scraper e Map
+
+O pacote inclui a classe `Scraper` para scraping com fallback em 3 tiers (HTTP → Stealth → Playwright). Além de `scrape()` e `scrapeMany()`, há o método **Map** — descoberta rápida de URLs de um site.
+
+### Map
+
+Extrai links de uma página com título (texto do âncora), filtrando por domínio e permitindo busca por relevância. Útil para descobrir páginas antes de navegar ou de chamar o Agent.
+
+```typescript
+import { Scraper } from "auspex";
+
+const crawler = new Scraper({ verbose: true });
+
+const result = await crawler.map("https://nodejs.org", {
+  search: "pricing",   // filtrar/ordenar por relevância
+  limit: 20,
+  includeSubdomains: true,
+  ignoreQueryParameters: true,
+});
+
+for (const link of result.links) {
+  console.log(link.url, link.title);
+}
+
+await crawler.close();
+```
+
+| Opção | Tipo | Default | Descrição |
+|-------|------|---------|-----------|
+| `search` | `string` | — | Filtrar links por relevância ao termo |
+| `includeSubdomains` | `boolean` | `true` | Incluir links de subdomínios |
+| `ignoreQueryParameters` | `boolean` | `true` | Deduplicar URLs removendo `?foo=bar` |
+| `limit` | `number` | `500` | Máximo de links retornados |
+
+Exemplo: `npx tsx examples/map.ts`
+
+---
+
 ## Arquitetura
 
 ```
@@ -656,7 +695,7 @@ src/
     actions.ts              # Parser e validador de acoes do LLM
     report.ts               # Gerador de relatorio de execucao
   scraper/
-    index.ts                # Firecrawl — scraping com fallback HTTP -> Browser
+    index.ts                # Scraper — fallback HTTP -> Stealth -> Browser
     tiers/
       tier1-http.ts         # Tier 1: got-scraping (HTTP puro)
       tier2-stealth.ts      # Tier 2: Playwright stealth
