@@ -1,6 +1,6 @@
 {
   "name": "auspex",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "AI-powered browser agent with tiered scraping — HTTP/Cheerio first, Playwright as fallback",
   "type": "module",
   "main": "./dist/index.js",
