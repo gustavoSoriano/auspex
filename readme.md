@@ -146,7 +146,7 @@ new Auspex({
   presencePenalty: 0,              // -2 a 2, penalizar temas ja cobertos (default: sem override)
 
   // ──── Limites ────────────────────────────────────
-  maxIterations: 20,               // max iteracoes do loop (default: 20)
+  maxIterations: 30,               // max iteracoes do loop (default: 30)
   timeoutMs: 120000,               // timeout total em ms (default: 120s)
   maxWaitMs: 5000,                 // max tempo de wait por acao (default: 5s)
 
@@ -168,7 +168,7 @@ new Auspex({
 | `topP` | `number` | Nao | — | Nucleus sampling (0 a 1) |
 | `frequencyPenalty` | `number` | Nao | — | Penalizar tokens repetidos (-2 a 2) |
 | `presencePenalty` | `number` | Nao | — | Penalizar temas ja abordados (-2 a 2) |
-| `maxIterations` | `number` | Nao | `20` | Max iteracoes do agent loop |
+| `maxIterations` | `number` | Nao | `30` | Max iteracoes do agent loop |
 | `timeoutMs` | `number` | Nao | `120000` | Timeout total da execucao (ms) |
 | `maxWaitMs` | `number` | Nao | `5000` | Max ms para acao `wait` |
 | `allowedDomains` | `string[]` | Nao | — | Whitelist de dominios permitidos |
@@ -501,7 +501,7 @@ Dialogs do browser (`alert`, `confirm`, `prompt`) sao automaticamente descartado
 
 ### Protecao contra loops
 
-- **Max iteracoes**: o loop para apos `maxIterations` (default: 20)
+- **Max iteracoes**: o loop para apos `maxIterations` (default: 30)
 - **Timeout total**: para apos `timeoutMs` (default: 120s)
 - **Deteccao de stuck**: janela deslizante de 9 iteracoes — se a mesma acao aparecer 3 vezes, o framework injeta uma mensagem de `STUCK` no historico e forca outra abordagem. Detecta tanto loops simples (A,A,A) quanto alternados (A,B,A,B,A)
 

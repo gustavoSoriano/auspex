@@ -14,6 +14,7 @@ export const agentConfigSchema = z.object({
   maxIterations: z.number().int().positive().default(DEFAULTS.maxIterations),
   timeoutMs: z.number().int().positive().default(DEFAULTS.timeoutMs),
   maxWaitMs: z.number().int().positive().default(DEFAULTS.maxWaitMs),
+  gotoTimeoutMs: z.number().int().positive().default(DEFAULTS.gotoTimeoutMs),
   allowedDomains: z.array(z.string()).optional(),
   blockedDomains: z.array(z.string()).optional(),
 });

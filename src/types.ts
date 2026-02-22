@@ -11,6 +11,7 @@ export interface AgentConfig {
   maxIterations?: number;
   timeoutMs?: number;
   maxWaitMs?: number;
+  gotoTimeoutMs?: number;
   allowedDomains?: string[];
   blockedDomains?: string[];
 }

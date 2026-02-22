@@ -13,8 +13,13 @@ function describeAction(record: ActionRecord): string {
       return `Aguardou ${action.ms}ms`;
     case "scroll":
       return `Fez scroll ${action.direction === "down" ? "para baixo" : "para cima"}`;
-    case "done":
+    case "done": {
+      const r = action.result;
+      if (typeof r === "string" && r.startsWith("FAILED:")) {
+        return `Falhou: ${r.slice(7).trim()}`;
+      }
       return `Finalizou com resultado`;
+    }
   }
 }
 

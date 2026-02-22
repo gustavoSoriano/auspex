@@ -18,9 +18,9 @@ async function main() {
   console.log("Starting browser agent...\n");
 
   const result = await agent.run({
-    url: "https://www.z-api.io",
+    url: "https://www.ragup.com.br/",
     prompt:
-      "Me explique de forma detalhada o que é o Z-API, para que serve, quais são seus principais recursos e funcionalidades, e quanto custa cada plano disponível (preços, limites, diferenças entre os planos).",
+      "Me explique de forma detalhada o que é o ragup, para que serve, quais são seus principais recursos e funcionalidades",
   });
 
   console.log(result);

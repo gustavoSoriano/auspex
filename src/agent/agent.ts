@@ -62,7 +62,10 @@ export class Auspex {
 
   private async ensureBrowser(): Promise<Browser> {
     if (!this.browser || !this.browser.isConnected()) {
-      this.browser = await chromium.launch({ headless: true });
+      this.browser = await chromium.launch({
+        headless: true,
+        args: ["--disable-blink-features=AutomationControlled"],
+      });
     }
     return this.browser;
   }
@@ -123,9 +126,18 @@ export class Auspex {
     let page: Page | null = null;
 
     try {
-      const context = await browser.newContext();
+      const context = await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        locale: "pt-BR",
+        timezoneId: "America/Sao_Paulo",
+      });
+      context.addInitScript(() => {
+        Object.defineProperty(navigator, "webdriver", { get: () => false, configurable: true });
+        (window as unknown as { chrome?: unknown }).chrome = { runtime: {} };
+      });
       page = await context.newPage();
-      await page.goto(validUrl, { waitUntil: "domcontentloaded", timeout: 15_000 });
+      const gotoTimeout = this.config.gotoTimeoutMs ?? 15_000;
+      await page.goto(validUrl, { waitUntil: "domcontentloaded", timeout: gotoTimeout });
 
       return await runAgentLoop(page, validUrl, prompt, this.config, getMemoryKb);
     } catch (err) {

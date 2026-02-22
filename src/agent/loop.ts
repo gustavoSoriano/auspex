@@ -103,8 +103,13 @@ export async function runStaticLoop(
   }
 
   if (action.type === "done") {
-    // LLM conseguiu extrair os dados do HTML estático ✅ sem precisar de browser
     const actions: ActionRecord[] = [{ action, iteration: 0, timestamp: Date.now() }];
+    const isFailed = typeof action.result === "string" && action.result.startsWith("FAILED:");
+    if (isFailed) {
+      const reason = action.result.slice(7).trim() || "O agente não conseguiu completar a tarefa.";
+      return buildResult("error", "http", null, actions, usage, 0, startTime, url, prompt, reason);
+    }
+    // LLM conseguiu extrair os dados do HTML estático ✅ sem precisar de browser
     return buildResult("done", "http", action.result, actions, usage, 0, startTime, url, prompt);
   }
 
@@ -205,6 +210,11 @@ export async function runAgentLoop(
     history.push(formatActionForHistory(action, i));
 
     if (action.type === "done") {
+      const isFailed = typeof action.result === "string" && action.result.startsWith("FAILED:");
+      if (isFailed) {
+        const reason = action.result.slice(7).trim() || "O agente não conseguiu completar a tarefa.";
+        return buildResult("error", "playwright", null, actions, usage, peakRssKb, startTime, url, prompt, reason);
+      }
       return buildResult("done", "playwright", action.result, actions, usage, peakRssKb, startTime, url, prompt);
     }
 
