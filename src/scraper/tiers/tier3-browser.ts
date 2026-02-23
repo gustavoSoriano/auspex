@@ -290,42 +290,48 @@ const BLOCKED_URL_PATTERNS = [
 
 export class Tier3Browser {
   private browser: Browser | null = null;
+  private browserPromise: Promise<Browser> | null = null;
   private readonly browserConfig: NonNullable<ScraperConfig["browserConfig"]>;
 
   constructor(browserConfig: ScraperConfig["browserConfig"] = {}) {
     this.browserConfig = browserConfig;
   }
 
-  // ── Lifecycle do browser (singleton reutilizável) ──────────────────────
+  // ── Lifecycle do browser (singleton with mutex) ────────────────────────
 
   private async getBrowser(): Promise<Browser> {
     if (this.browser?.isConnected()) return this.browser;
 
-    const launchOptions: Parameters<typeof chromium.launch>[0] = {
-      headless: this.browserConfig.headless ?? true,
-      args: STEALTH_ARGS,
-    };
+    if (!this.browserPromise) {
+      this.browserPromise = (async () => {
+        const launchOptions: Parameters<typeof chromium.launch>[0] = {
+          headless: this.browserConfig.headless ?? true,
+          args: STEALTH_ARGS,
+        };
 
-    // Estratégia de resolução do executável:
-    //   1. executablePath explícito (máxima flexibilidade)
-    //   2. channel (ex: 'chrome' → usa Chrome do sistema)
-    //   3. sem channel → Playwright usa o Chromium que ele mesmo baixou
-    if (this.browserConfig.executablePath) {
-      launchOptions.executablePath = this.browserConfig.executablePath;
-    } else if (this.browserConfig.channel) {
-      launchOptions.channel = this.browserConfig.channel;
-    } else {
-      // Tenta Chrome do sistema primeiro; se não tiver, usa playwright-chromium
-      try {
-        this.browser = await chromium.launch({ ...launchOptions, channel: "chrome" });
-        return this.browser;
-      } catch {
-        // Chrome não encontrado → deixa o Playwright usar o Chromium dele
-      }
+        if (this.browserConfig.executablePath) {
+          launchOptions.executablePath = this.browserConfig.executablePath;
+        } else if (this.browserConfig.channel) {
+          launchOptions.channel = this.browserConfig.channel;
+        } else {
+          try {
+            const browser = await chromium.launch({ ...launchOptions, channel: "chrome" });
+            this.browser = browser;
+            this.browserPromise = null;
+            return browser;
+          } catch {
+            // Chrome not found → use Playwright's bundled Chromium
+          }
+        }
+
+        const browser = await chromium.launch(launchOptions);
+        this.browser = browser;
+        this.browserPromise = null;
+        return browser;
+      })();
     }
 
-    this.browser = await chromium.launch(launchOptions);
-    return this.browser;
+    return this.browserPromise;
   }
 
   // ── Scraping principal ─────────────────────────────────────────────────

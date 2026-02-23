@@ -1,10 +1,10 @@
 import { gotScraping } from "got-scraping";
+import { load } from "cheerio";
 import type { ScrapeOptions, ScrapeResult } from "../types.js";
 import { extractSSRData, hasEnoughContent } from "../extractors/ssr.js";
 import { extractContent } from "../extractors/content.js";
 import { htmlToMarkdown } from "../extractors/to-markdown.js";
 
-// Tipo mínimo da resposta do got-scraping (baseada na interface do got)
 interface GotResponse {
   body: string;
   statusCode: number;
@@ -68,16 +68,17 @@ export class Tier2Stealth {
         retry: { limit: 2, methods: ["GET"] },
         throwHttpErrors: false,
         decompress: true,
-      })) as unknown as GotResponse;
+      })) as GotResponse;
     } catch (err) {
       throw new Error(
         `Tier2 Stealth: falha na requisição — ${err instanceof Error ? err.message : String(err)}`,
       );
     }
 
-    const html = response.body;
+    const html = response.body as string;
     const statusCode = response.statusCode;
     const finalUrl = response.url ?? url;
+    const $ = load(html);
 
     // ── Verificações de bloqueio ────────────────────────────────────────
     if (ANTIBOT_STATUS.has(statusCode)) {
@@ -100,22 +101,22 @@ export class Tier2Stealth {
       );
     }
 
-    // ── Tentar extrair dados SSR embutidos ──────────────────────────────
-    const ssrData = extractSSRData(html);
+    const ssrData = extractSSRData(html, $);
 
-    // ── Verificar se o HTML tem conteúdo sem JS ─────────────────────────
+    // NOTE: Do NOT pass shared $ to hasEnoughContent — it destructively removes
+    // <img>, <svg>, <iframe> etc. which would corrupt $ for extractContent below.
     if (!hasEnoughContent(html) && !ssrData) {
       throw new Error(
         "Tier2 Stealth: conteúdo insuficiente — página precisa de JavaScript para renderizar",
       );
     }
 
-    // ── Extrair conteúdo ────────────────────────────────────────────────
     const formats = options.formats ?? ["markdown", "text"];
     const extracted = extractContent(
       html,
       options.onlyMainContent ?? true,
       finalUrl,
+      $,
     );
 
     const result: ScrapeResult = {

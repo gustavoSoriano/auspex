@@ -18,6 +18,8 @@ Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e u
 - [Relatorio de Execucao](#relatorio-de-execucao)
 - [Parametros da LLM](#parametros-da-llm)
 - [Providers de LLM compativeis](#providers-de-llm-compativeis)
+- [Eventos](#eventos)
+- [Browser Pool](#browser-pool)
 - [Acoes do Agent](#acoes-do-agent)
 - [Seguranca](#seguranca)
 - [Monitoramento — Tokens e Memoria](#monitoramento--tokens-e-memoria)
@@ -126,6 +128,20 @@ const r2 = await agent.run({
 await agent.close(); // limpa tudo no final
 ```
 
+### Construtor com pool (opcional)
+
+Voce pode passar um `BrowserPool` como segundo argumento para compartilhar instancias de browser entre multiplos agents (ex.: workers concorrentes). Sem pool, o agent usa um unico browser por instancia.
+
+```typescript
+import { Auspex, BrowserPool } from "auspex";
+
+const pool = new BrowserPool({ maxSize: 3 });
+const agent = new Auspex({ llmApiKey: "sk-..." }, pool);
+const result = await agent.run({ url, prompt });
+await agent.close(); // apenas desvincula do pool; o pool continua ativo
+// pool.close() quando nao for mais usar
+```
+
 ---
 
 ## AgentConfig — Configuracao completa
@@ -154,6 +170,22 @@ new Auspex({
   // ──── Seguranca ──────────────────────────────────
   allowedDomains: ["example.com"], // se definido, SO permite esses dominios
   blockedDomains: ["evil.com"],    // dominios bloqueados explicitamente
+
+  // ──── Browser e rede ────────────────────────────
+  gotoTimeoutMs: 15000,            // timeout do page.goto (default: 15s)
+  proxy: { server: "http://...", username?: "...", password?: "..." },
+  cookies: [{ name, value, domain?, path?, ... }],  // cookies injetados no context
+  extraHeaders: { "Accept-Language": "pt-BR" },     // headers HTTP do context
+
+  // ──── Loop e orcamento ──────────────────────────
+  actionDelayMs: 500,              // delay entre iteracoes (ms, default: 500)
+  maxTotalTokens: 0,             // orcamento total de tokens (0 = ilimitado)
+
+  // ──── Log e vision ───────────────────────────────
+  log: false,                     // gravar log em arquivo por execucao (./logs/)
+  logDir: "logs",                 // diretorio dos logs
+  vision: false,                  // fallback com screenshot apos falhas (modelo com vision)
+  screenshotQuality: 75,           // qualidade JPEG 1-100 (vision, default: 75)
 });
 ```
 
@@ -172,8 +204,18 @@ new Auspex({
 | `maxIterations` | `number` | Nao | `30` | Max iteracoes do agent loop |
 | `timeoutMs` | `number` | Nao | `120000` | Timeout total da execucao (ms) |
 | `maxWaitMs` | `number` | Nao | `5000` | Max ms para acao `wait` |
+| `gotoTimeoutMs` | `number` | Nao | `15000` | Timeout do page.goto (ms) |
 | `allowedDomains` | `string[]` | Nao | — | Whitelist de dominios permitidos |
 | `blockedDomains` | `string[]` | Nao | — | Blacklist de dominios bloqueados |
+| `actionDelayMs` | `number` | Nao | `500` | Delay entre iteracoes (ms) |
+| `maxTotalTokens` | `number` | Nao | `0` | Orcamento total de tokens (0 = ilimitado) |
+| `proxy` | `ProxyConfig` | Nao | — | Proxy para browser e requests |
+| `cookies` | `CookieParam[]` | Nao | — | Cookies injetados no context |
+| `extraHeaders` | `Record<string, string>` | Nao | — | Headers HTTP do context |
+| `log` | `boolean` | Nao | `false` | Gravar log em arquivo por run |
+| `logDir` | `string` | Nao | `"logs"` | Diretorio dos arquivos de log |
+| `vision` | `boolean` | Nao | `false` | Fallback com screenshot apos falhas (modelo vision) |
+| `screenshotQuality` | `number` | Nao | `75` | Qualidade JPEG 1-100 para screenshots |
 
 ---
 
@@ -185,12 +227,27 @@ Opcoes passadas para `agent.run(options)`:
 |-----------|------|:-----------:|-----------|
 | `url` | `string` | Sim | URL inicial para o agent navegar |
 | `prompt` | `string` | Sim | Instrucao em linguagem natural |
+| `maxIterations` | `number` | Nao | Override de maxIterations para este run |
+| `timeoutMs` | `number` | Nao | Override de timeoutMs para este run |
+| `actionDelayMs` | `number` | Nao | Override de actionDelayMs para este run |
+| `signal` | `AbortSignal` | Nao | AbortSignal para cancelar o run |
+| `schema` | `ZodType<T>` | Nao | Schema Zod: retorno tipado em `data` (T \| null) |
+| `vision` | `boolean` | Nao | Override do fallback com screenshot |
 
 ```typescript
 const result = await agent.run({
   url: "https://example.com",
   prompt: "Qual o titulo desta pagina?",
 });
+
+// Com schema Zod — data fica tipado
+const schema = z.object({ title: z.string(), price: z.number() });
+const result = await agent.run({
+  url: "https://shop.example.com",
+  prompt: "Extraia titulo e preco do produto.",
+  schema,
+});
+// result.data: { title: string; price: number } | null
 ```
 
 ---
@@ -201,9 +258,9 @@ O `agent.run()` retorna um objeto `AgentResult` com tudo que aconteceu:
 
 ```typescript
 interface AgentResult {
-  status: "done" | "max_iterations" | "error" | "timeout";
+  status: "done" | "max_iterations" | "error" | "timeout" | "aborted";
   tier: "http" | "playwright";    // metodo de scraping utilizado
-  data: string | null;            // resultado retornado pelo agent (texto)
+  data: string | null;            // resultado (texto). Com run({ schema }), pode ser objeto tipado
   report: string;                 // relatorio formatado legivel
   durationMs: number;             // duracao total da execucao em ms
   actions: ActionRecord[];        // historico de todas as acoes executadas
@@ -220,6 +277,7 @@ interface AgentResult {
 | `"done"` | Tarefa concluida com sucesso. `data` contem o resultado. |
 | `"max_iterations"` | Atingiu o limite de iteracoes sem concluir. |
 | `"timeout"` | Tempo limite excedido (`timeoutMs`). |
+| `"aborted"` | Cancelado pelo chamador (AbortSignal). |
 | `"error"` | Erro durante execucao. Ver `error` para detalhes. |
 
 ### Tier
@@ -272,31 +330,32 @@ const result = await agent.run({ url, prompt });
 console.log(result.report);
 ```
 
-Exemplo de saida (tier HTTP):
+Exemplo de saida (tier HTTP). O relatorio eh gerado em ingles:
 
 ```
 ═══════════════════════════════════════════
-  RELATORIO DE EXECUCAO — auspex
+  EXECUTION REPORT — auspex
 ═══════════════════════════════════════════
 
-URL    : https://news.ycombinator.com
-Prompt : Retorne o titulo do primeiro artigo.
-Status : Tarefa concluida com sucesso.
-Metodo : 🟢 HTTP/Cheerio (sem browser)
-Duracao: 1.2s
+  URL     : https://news.ycombinator.com
+  Prompt  : Retorne o titulo do primeiro artigo.
+  Status  : Task completed successfully.
+  Method  : HTTP/Cheerio (no browser — static page)
+  Duration: 1.2s
 
 ───────────────────────────────────────────
-  RESULTADO
+  RESULT
 ───────────────────────────────────────────
 
   Show HN: My weekend project
 
 ───────────────────────────────────────────
-  CONSUMO
+  RESOURCE USAGE
 ───────────────────────────────────────────
 
-  LLM   : 1 chamada | 1820 tokens (1650 prompt + 170 completion)
-  Memoria: Node.js 45.2 MB | Chromium: nao utilizado
+  LLM    : 1 call(s) | 1820 tokens
+           > 1650 prompt + 170 completion
+  RAM    : Node.js 45.2 MB  |  Browser: not used
 
 ═══════════════════════════════════════════
 ```
@@ -305,37 +364,38 @@ Exemplo de saida (tier Playwright):
 
 ```
 ═══════════════════════════════════════════
-  RELATORIO DE EXECUCAO — auspex
+  EXECUTION REPORT — auspex
 ═══════════════════════════════════════════
 
-URL    : https://app.exemplo.com
-Prompt : Faca login e retorne o saldo da conta.
-Status : Tarefa concluida com sucesso.
-Metodo : 🟡 Playwright Chromium
-Duracao: 12.4s
+  URL     : https://app.exemplo.com
+  Prompt  : Faca login e retorne o saldo da conta.
+  Status  : Task completed successfully.
+  Method  : Playwright Chromium (full browser — JS required)
+  Duration: 12.4s
 
 ───────────────────────────────────────────
-  PASSO A PASSO
+  STEP BY STEP
 ───────────────────────────────────────────
 
-  1. Clicou no elemento "input[name='email']"
-  2. Digitou "user@email.com" em "input[name='email']"
-  3. Digitou "••••••••" em "input[name='password']"
-  4. Clicou no elemento "button[type='submit']"
-  5. Finalizou com resultado
+  1. Clicked element "input[name='email']"
+  2. Typed "user@email.com" into "input[name='email']"
+  3. Typed "••••••••" into "input[name='password']"
+  4. Clicked element "button[type='submit']"
+  5. Finished with result
 
 ───────────────────────────────────────────
-  RESULTADO
+  RESULT
 ───────────────────────────────────────────
 
   Saldo: R$ 1.234,56
 
 ───────────────────────────────────────────
-  CONSUMO
+  RESOURCE USAGE
 ───────────────────────────────────────────
 
-  LLM   : 5 chamadas | 9430 tokens (8100 prompt + 1330 completion)
-  Memoria: Node.js 67.0 MB | Chromium pico: 412.3 MB
+  LLM    : 5 call(s) | 9430 tokens
+           > 8100 prompt + 1330 completion
+  RAM    : Node.js 67.0 MB  |  Chromium peak 412.3 MB
 
 ═══════════════════════════════════════════
 ```
@@ -443,14 +503,72 @@ O LLM so pode executar acoes de uma **whitelist rigorosa**. Qualquer coisa fora 
 
 | Acao | Formato JSON | Descricao |
 |------|-------------|-----------|
-| **click** | `{"type":"click","selector":"#btn"}` | Clica em um elemento via CSS selector |
+| **click** | `{"type":"click","selector":"#btn"}` | Clica em um elemento (CSS ou role=button[name="..."] ) |
 | **type** | `{"type":"type","selector":"input[name='q']","text":"busca"}` | Digita texto em um campo (max 1000 chars) |
+| **select** | `{"type":"select","selector":"select#country","value":"br"}` | Seleciona opcao em `<select>` (value = option value) |
+| **pressKey** | `{"type":"pressKey","key":"Enter"}` | Tecla: Enter, Tab, Escape, Backspace, ArrowUp/Down, etc. |
+| **hover** | `{"type":"hover","selector":"#menu"}` | Passa o mouse sobre o elemento (menus, tooltips) |
 | **goto** | `{"type":"goto","url":"https://..."}` | Navega para uma URL (passa por validacao anti-SSRF) |
 | **wait** | `{"type":"wait","ms":2000}` | Espera N milissegundos (max 5000ms) |
-| **scroll** | `{"type":"scroll","direction":"down"}` | Scroll para cima ou para baixo |
-| **done** | `{"type":"done","result":"titulo da pagina"}` | Finaliza e retorna o resultado |
+| **scroll** | `{"type":"scroll","direction":"down","amount":500}` | Scroll (amount opcional, default 500px) |
+| **done** | `{"type":"done","result":"..."}` | Finaliza e retorna o resultado (max 50k chars) |
 
-### Acoes BLOQUEADAS
+Selectors podem ser **CSS** ou **role-based** (ex.: `role=button[name="Submit"]`) quando a Accessibility Tree esta no snapshot.
+
+---
+
+## Eventos
+
+O `Auspex` estende `EventEmitter`. Voce pode escutar eventos por run:
+
+| Evento | Argumentos | Descricao |
+|--------|------------|-----------|
+| `tier` | `(tier: AgentTier)` | Indica se o run usou HTTP ou Playwright |
+| `iteration` | `(iteration: number, snapshot: PageSnapshot)` | Apos cada snapshot no loop |
+| `action` | `(action: AgentAction, iteration: number)` | Antes de executar cada acao |
+| `error` | `(error: Error)` | Em caso de erro na execucao (se houver listener) |
+| `done` | `(result: AgentResult)` | Ao finalizar o run (sucesso ou nao) |
+
+```typescript
+agent.on("tier", (tier) => console.log("[tier]", tier));
+agent.on("iteration", (i, snapshot) => console.log(`[iter ${i}]`, snapshot.url));
+agent.on("action", (action, i) => console.log(`[action ${i}]`, action.type));
+agent.on("done", (result) => console.log("Done:", result.status));
+
+const result = await agent.run({ url, prompt });
+```
+
+---
+
+## Browser Pool
+
+A classe `BrowserPool` gerencia um conjunto de browsers Playwright reutilizaveis. Util para limitar recursos quando varios agents rodam em paralelo.
+
+```typescript
+import { BrowserPool } from "auspex";
+
+const pool = new BrowserPool({
+  maxSize: 3,
+  acquireTimeoutMs: 30_000,
+  launchOptions: { headless: true },
+});
+
+const browser = await pool.acquire();
+// ... usar browser (newContext, newPage, etc.)
+pool.release(browser);
+
+await pool.close(); // fecha todos os browsers
+```
+
+| Opcao | Tipo | Default | Descricao |
+|-------|------|---------|-----------|
+| `maxSize` | `number` | `3` | Maximo de instancias de browser |
+| `acquireTimeoutMs` | `number` | `30000` | Timeout ao esperar um browser livre |
+| `launchOptions` | `LaunchOptions` | headless + stealth args | Opcoes do Playwright |
+
+---
+
+## Acoes BLOQUEADAS
 
 O framework **nao permite** nenhuma forma de:
 
@@ -473,7 +591,7 @@ Toda URL (inicial e durante navegacao) passa por validacao rigorosa:
 - **IPs privados**: `127.0.0.0/8`, `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`
 - **Cloud metadata**: `169.254.169.254` (AWS/GCP metadata endpoint)
 - **Localhost**: `localhost`, `[::1]`
-- **DNS rebinding**: resolve o hostname antes de navegar — detecta dominios publicos apontando para IPs privados
+- **DNS rebinding**: resolve o hostname antes de navegar — detecta dominios publicos apontando para IPs privados. Falha de DNS rejeita a URL (fail closed).
 
 ### Whitelist de acoes
 
@@ -486,6 +604,8 @@ Selectors CSS sao verificados contra padroes maliciosos antes de qualquer intera
 - `javascript:` — bloqueado
 - `on*=` (event handlers como `onclick=`) — bloqueado
 - `<script>` — bloqueado
+- `data:` — bloqueado
+- Tamanho maximo de 500 caracteres (protecao DoS)
 - Strings vazias ou so espacos — bloqueadas
 
 ### Anti-prompt injection
@@ -613,6 +733,9 @@ switch (result.status) {
   case "timeout":
     console.warn("Timeout — aumente timeoutMs ou simplifique a tarefa");
     break;
+  case "aborted":
+    console.warn("Cancelado (AbortSignal)");
+    break;
   case "error":
     console.error("Erro:", result.error);
     break;
@@ -632,7 +755,8 @@ Criar um `Auspex` uma vez e chamar `run()` multiplas vezes eh mais eficiente do 
 - **Sem file upload**: a acao `type` preenche campos de texto, mas nao faz upload de arquivos.
 - **Dependencia de selectors CSS**: a qualidade da automacao depende da capacidade do LLM de identificar selectors corretos a partir do snapshot textual.
 - **Snapshot limitado**: captura ate 25 links, 5 formularios e 3500 chars de texto por pagina. Paginas muito grandes podem ter elementos nao capturados.
-- **JSON mode obrigatorio**: o provider LLM deve suportar `response_format: { type: "json_object" }`.
+- **Vision**: ao usar `vision: true`, o modelo deve suportar entrada de imagem (ex.: gpt-4o, gpt-4o-mini). Screenshot so eh enviado apos falhas consecutivas (fallback).
+- **JSON mode obrigatorio**: o provider LLM deve suportar `response_format: { type: "json_object" }` (exceto em chamadas com screenshot, quando pode ser omitido).
 
 ---
 
@@ -694,6 +818,11 @@ src/
     loop.ts                 # Core loop: snapshot -> LLM -> validar -> executar
     actions.ts              # Parser e validador de acoes do LLM
     report.ts               # Gerador de relatorio de execucao
+    logger.ts               # Log por run (arquivo em logDir)
+  browser/
+    pool.ts                 # BrowserPool — pool de browsers reutilizaveis
+  llm/
+    vision-models.ts        # Whitelist de modelos com suporte a vision
   scraper/
     index.ts                # Scraper — fallback HTTP -> Stealth -> Browser
     tiers/
@@ -777,6 +906,7 @@ LLM_API_KEY=sk-your-key-here
 ```typescript
 import {
   Auspex,
+  BrowserPool,
   type AgentConfig,
   type AgentResult,
   type AgentAction,
@@ -790,6 +920,10 @@ import {
   type SnapshotLink,
   type SnapshotForm,
   type SnapshotInput,
+  type ProxyConfig,
+  type CookieParam,
+  type AuspexEvents,
+  type BrowserPoolOptions,
   UrlValidationError,
   ActionValidationError,
 } from "auspex";

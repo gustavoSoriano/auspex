@@ -1,4 +1,4 @@
-// ── Agente LLM (automação via Playwright) ─────────────────────────────────
+// ── LLM Agent (automation via Playwright) ───────────────────────────────────
 export { Auspex } from "./agent/agent.js";
 
 export type {
@@ -6,6 +6,7 @@ export type {
   AgentResult,
   AgentAction,
   AgentStatus,
+  AgentTier,
   ActionRecord,
   LLMUsage,
   MemoryUsage,
@@ -14,9 +15,16 @@ export type {
   SnapshotLink,
   SnapshotForm,
   SnapshotInput,
+  ProxyConfig,
+  CookieParam,
+  AuspexEvents,
 } from "./types.js";
 
-// ── Scraper (fallback automático HTTP → Stealth → Browser) ─────────────────
+// ── Browser Pool ─────────────────────────────────────────────────────────────
+export { BrowserPool } from "./browser/pool.js";
+export type { BrowserPoolOptions } from "./browser/pool.js";
+
+// ── Scraper (automatic fallback HTTP → Stealth → Browser) ───────────────────
 export { Scraper } from "./scraper/index.js";
 
 export type {
@@ -33,6 +41,6 @@ export type {
   MapResult,
 } from "./scraper/index.js";
 
-// ── Segurança ─────────────────────────────────────────────────────────────
+// ── Security ─────────────────────────────────────────────────────────────────
 export { UrlValidationError } from "./security/url-validator.js";
 export { ActionValidationError } from "./security/action-validator.js";

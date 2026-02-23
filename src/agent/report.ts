@@ -1,24 +1,30 @@
-import type { AgentResult, AgentAction, ActionRecord } from "../types.js";
+import type { AgentResult, ActionRecord } from "../types.js";
 
 function describeAction(record: ActionRecord): string {
   const { action } = record;
   switch (action.type) {
     case "click":
-      return `Clicou no elemento "${action.selector}"`;
+      return `Clicked element "${action.selector}"`;
     case "type":
-      return `Digitou "${action.text}" no campo "${action.selector}"`;
+      return `Typed "${action.text}" into "${action.selector}"`;
+    case "select":
+      return `Selected "${action.value}" in "${action.selector}"`;
+    case "pressKey":
+      return `Pressed key "${action.key}"`;
+    case "hover":
+      return `Hovered over "${action.selector}"`;
     case "goto":
-      return `Navegou para ${action.url}`;
+      return `Navigated to ${action.url}`;
     case "wait":
-      return `Aguardou ${action.ms}ms`;
+      return `Waited ${action.ms}ms`;
     case "scroll":
-      return `Fez scroll ${action.direction === "down" ? "para baixo" : "para cima"}`;
+      return `Scrolled ${action.direction}${action.amount ? ` ${action.amount}px` : ""}`;
     case "done": {
       const r = action.result;
       if (typeof r === "string" && r.startsWith("FAILED:")) {
-        return `Falhou: ${r.slice(7).trim()}`;
+        return `Failed: ${r.slice(7).trim()}`;
       }
-      return `Finalizou com resultado`;
+      return `Finished with result`;
     }
   }
 }
@@ -26,36 +32,38 @@ function describeAction(record: ActionRecord): string {
 function describeStatus(result: AgentResult): string {
   switch (result.status) {
     case "done":
-      return "Tarefa concluída com sucesso.";
+      return "Task completed successfully.";
     case "max_iterations":
-      return `Tarefa interrompida: atingiu o limite de ${result.actions.length} iterações sem concluir.`;
+      return "Task interrupted: reached the iteration limit without completing.";
     case "timeout":
-      return "Tarefa interrompida: tempo limite excedido.";
+      return "Task interrupted: timeout exceeded.";
+    case "aborted":
+      return "Task aborted by user.";
     case "error":
-      return `Tarefa interrompida por erro: ${result.error}`;
+      return `Task interrupted by error: ${result.error}`;
   }
 }
 
 function describeTier(result: AgentResult): string {
   if (result.tier === "http") {
-    return "🟢 HTTP/Cheerio  (sem browser — página estática)";
+    return "HTTP/Cheerio (no browser — static page)";
   }
-  return "🟡 Playwright Chromium  (browser completo — JS necessário)";
+  return "Playwright Chromium (full browser — JS required)";
 }
 
 function describeMemory(result: AgentResult): string {
   const node = `Node.js heap ${result.memory.nodeHeapUsedMb} MB`;
 
   if (result.tier === "http") {
-    return `${node}  |  Browser: não utilizado`;
+    return `${node}  |  Browser: not used`;
   }
 
   if (result.memory.browserPeakRssKb > 0) {
     const browserMb = (result.memory.browserPeakRssKb / 1024).toFixed(1);
-    return `${node}  |  Chromium pico ${browserMb} MB`;
+    return `${node}  |  Chromium peak ${browserMb} MB`;
   }
 
-  return `${node}  |  Chromium: RSS não disponível`;
+  return `${node}  |  Chromium: RSS not available`;
 }
 
 export function generateReport(result: AgentResult, url: string, prompt: string): string {
@@ -63,19 +71,19 @@ export function generateReport(result: AgentResult, url: string, prompt: string)
   const duration = (result.durationMs / 1000).toFixed(1);
 
   lines.push("═══════════════════════════════════════════");
-  lines.push("  RELATÓRIO DE EXECUÇÃO");
+  lines.push("  EXECUTION REPORT — auspex");
   lines.push("═══════════════════════════════════════════");
   lines.push("");
-  lines.push(`  URL    : ${url}`);
-  lines.push(`  Prompt : ${prompt}`);
-  lines.push(`  Status : ${describeStatus(result)}`);
-  lines.push(`  Método : ${describeTier(result)}`);
-  lines.push(`  Duração: ${duration}s`);
+  lines.push(`  URL     : ${url}`);
+  lines.push(`  Prompt  : ${prompt}`);
+  lines.push(`  Status  : ${describeStatus(result)}`);
+  lines.push(`  Method  : ${describeTier(result)}`);
+  lines.push(`  Duration: ${duration}s`);
   lines.push("");
 
   if (result.actions.length > 0) {
     lines.push("───────────────────────────────────────────");
-    lines.push("  PASSO A PASSO");
+    lines.push("  STEP BY STEP");
     lines.push("───────────────────────────────────────────");
     lines.push("");
 
@@ -86,21 +94,25 @@ export function generateReport(result: AgentResult, url: string, prompt: string)
     lines.push("");
   }
 
-  if (result.data) {
+  if (result.data !== null && result.data !== undefined) {
     lines.push("───────────────────────────────────────────");
-    lines.push("  RESULTADO");
+    lines.push("  RESULT");
     lines.push("───────────────────────────────────────────");
     lines.push("");
-    lines.push(`  ${result.data}`);
+    const dataStr = typeof result.data === "string"
+      ? result.data
+      : JSON.stringify(result.data, null, 2);
+    const maxResultChars = 10_000;
+    lines.push(dataStr.length <= maxResultChars ? dataStr : dataStr.slice(0, maxResultChars) + "\n... (truncated)");
     lines.push("");
   }
 
   lines.push("───────────────────────────────────────────");
-  lines.push("  CONSUMO DE RECURSOS");
+  lines.push("  RESOURCE USAGE");
   lines.push("───────────────────────────────────────────");
   lines.push("");
-  lines.push(`  LLM    : ${result.usage.calls} chamada(s) | ${result.usage.totalTokens} tokens`);
-  lines.push(`           ↳ ${result.usage.promptTokens} prompt + ${result.usage.completionTokens} completion`);
+  lines.push(`  LLM    : ${result.usage.calls} call(s) | ${result.usage.totalTokens} tokens`);
+  lines.push(`           > ${result.usage.promptTokens} prompt + ${result.usage.completionTokens} completion`);
   lines.push(`  RAM    : ${describeMemory(result)}`);
   lines.push("");
   lines.push("═══════════════════════════════════════════");

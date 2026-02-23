@@ -1,4 +1,4 @@
-import { load } from "cheerio";
+import { load, type CheerioAPI } from "cheerio";
 import type { SSRData } from "../types.js";
 
 // ─── Detectores de dados SSR ───────────────────────────────────────────────
@@ -24,8 +24,8 @@ function tryParse(raw: string): unknown | null {
  * Muitos sites Next.js/Nuxt/SvelteKit não precisam de browser —
  * os dados já estão no HTML e podem ser extraídos com Cheerio!
  */
-export function extractSSRData(html: string): SSRData | null {
-  const $ = load(html);
+export function extractSSRData(html: string, existing$?: CheerioAPI): SSRData | null {
+  const $ = existing$ ?? load(html);
 
   // ── Next.js: <script id="__NEXT_DATA__" type="application/json"> ──────
   const nextRaw = $("#__NEXT_DATA__").text().trim();
@@ -128,8 +128,8 @@ export function extractSSRData(html: string): SSRData | null {
  *  - Detecta padrões de anti-bot / challenge pages (Cloudflare, DDoS-Guard, etc.)
  *  - Detecta loading screens (texto de JS habilitado, spinners, etc.)
  */
-export function hasEnoughContent(html: string): boolean {
-  const $ = load(html);
+export function hasEnoughContent(html: string, existing$?: CheerioAPI): boolean {
+  const $ = existing$ ?? load(html);
 
   // Remove elementos que não geram conteúdo legível
   $("script, style, noscript, iframe, svg, img").remove();

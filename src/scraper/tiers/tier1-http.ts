@@ -1,17 +1,17 @@
 import { gotScraping } from "got-scraping";
+import { load } from "cheerio";
 
 import type { ScrapeOptions, ScrapeResult } from "../types.js";
+import { extractSSRData, hasEnoughContent } from "../extractors/ssr.js";
+import { extractContent } from "../extractors/content.js";
+import { htmlToMarkdown } from "../extractors/to-markdown.js";
 
-// Tipo mínimo da resposta do got-scraping (a lib usa `unknown` genérico)
 interface GotResponse {
   body: string;
   statusCode: number;
   url: string;
   headers: Record<string, string | string[] | undefined>;
 }
-import { extractSSRData, hasEnoughContent } from "../extractors/ssr.js";
-import { extractContent } from "../extractors/content.js";
-import { htmlToMarkdown } from "../extractors/to-markdown.js";
 
 // ─── Tier 1: got-scraping + TLS Fingerprint + Cheerio ──────────────────────
 //
@@ -77,8 +77,7 @@ export class Tier1HTTP {
 
         // Retorna o corpo como string (HTML)
         responseType: "text",
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as unknown as GotResponse;
+      })) as GotResponse;
     } catch (err) {
       // Erros de rede: DNS, TLS, timeout, ECONNREFUSED, etc.
       const msg = err instanceof Error ? err.message : String(err);
@@ -106,32 +105,28 @@ export class Tier1HTTP {
       );
     }
 
-    // got retorna o body como string quando responseType: 'text'
     const html = response.body as string;
-    // response.url é a URL final após redirecionamentos
     const finalUrl = response.url;
 
-    // ── Tentar extrair dados SSR embutidos ──────────────────────────────
-    // Next.js, Nuxt, Gatsby, Remix → os dados já estão no HTML!
-    // Permite extrair conteúdo rico sem precisar de browser ou JS.
-    const ssrData = extractSSRData(html);
+    // Single Cheerio parse shared across SSR detection, content check, and extraction
+    const $ = load(html);
 
-    // ── Verificar se o HTML tem conteúdo sem JS ─────────────────────────
-    // Detecta: página vazia de SPA, Cloudflare challenge, "enable JavaScript", etc.
+    const ssrData = extractSSRData(html, $);
+
+    // NOTE: Do NOT pass shared $ to hasEnoughContent — it destructively removes
+    // <img>, <svg>, <iframe> etc. which would corrupt $ for extractContent below.
     if (!hasEnoughContent(html) && !ssrData) {
       throw new Error(
         "Tier1 HTTP: conteúdo insuficiente — provavelmente SPA sem SSR ou anti-bot",
       );
     }
 
-    // ── Extrair conteúdo principal ──────────────────────────────────────
-    // 1. Mozilla Readability (mesmo algoritmo do Firefox Reader Mode)
-    // 2. Cheerio + heurísticas (fallback quando Readability falha)
     const formats = options.formats ?? ["markdown", "text"];
     const extracted = extractContent(
       html,
       options.onlyMainContent ?? true,
       finalUrl,
+      $,
     );
 
     const result: ScrapeResult = {

@@ -14,14 +14,37 @@ async function main() {
     model: process.env.LLM_MODEL,
     temperature: 1,
     timeoutMs: 180000,
+    log: true,
+    vision: true
   });
 
   console.log("Starting browser agent...\n");
 
+  agent.on("tier", (tier) => {
+    console.log(`[tier] ${tier}`);
+  });
+
+  agent.on("iteration", (i, snapshot) => {
+    console.log(`\n[iter ${i}] ${snapshot.url} — "${snapshot.title}"`);
+  });
+
+  agent.on("action", (action, i) => {
+    const desc =
+      action.type === "click"    ? `click "${action.selector}"` :
+      action.type === "type"     ? `type "${action.text}" into "${action.selector}"` :
+      action.type === "pressKey" ? `press ${action.key}` :
+      action.type === "goto"     ? `goto ${action.url}` :
+      action.type === "scroll"   ? `scroll ${action.direction}` :
+      action.type === "wait"     ? `wait ${action.ms}ms` :
+      action.type === "done"     ? `done: ${action.result.slice(0, 120)}` :
+      JSON.stringify(action);
+    console.log(`  [action ${i}] ${desc}`);
+  });
+
   const result = await agent.run({
-    url: "https://www.ragup.com.br/",
+    url: "https://books.toscrape.com",
     prompt:
-      "Me explique de forma detalhada o que é o ragup, para que serve, quais são seus principais recursos e funcionalidades",
+      "procure no menu por: Crime depois The Long Shadow of Small Ghosts: Murder and Memory in an American City e me devolva um resumo",
   });
 
   console.log(result);

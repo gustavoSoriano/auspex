@@ -2,84 +2,115 @@ import type { Page } from "playwright-core";
 import * as cheerio from "cheerio";
 import type { PageSnapshot, SnapshotLink, SnapshotForm, SnapshotInput } from "../types.js";
 
-// ─── Limites do snapshot (calibrados para economizar tokens) ──────────────────
-const TEXT_LIMIT   = 3_500; // chars de texto da página enviados ao LLM
-const LINKS_LIMIT  = 25;    // máximo de links por snapshot
-const FORMS_LIMIT  = 5;     // máximo de forms por snapshot
-const INPUTS_LIMIT = 10;    // máximo de inputs por form
+// ─── Snapshot limits (calibrated to save tokens) ─────────────────────────────
+const TEXT_LIMIT   = 3_500; // chars of page text sent to LLM
+const LINKS_LIMIT  = 25;    // max links per snapshot
+const FORMS_LIMIT  = 5;     // max forms per snapshot
+const INPUTS_LIMIT = 10;    // max inputs per form
+const A11Y_LIMIT   = 3_000; // chars of accessibility tree YAML
 
-// ─── Filtro de links ruído ────────────────────────────────────────────────────
-//
-// Descarta links que não ajudam o LLM a navegar:
-//   - domínios de redes sociais / ícones de compartilhamento
-//   - links de assets (imagens, fontes, CSS, JS)
-//   - âncoras vazias, javascript: e mailto:
-//   - links sem texto visível
-//
+// ─── Noise link filter ───────────────────────────────────────────────────────
 const NOISE_HOSTS = new Set([
   "twitter.com", "x.com", "facebook.com", "instagram.com",
   "linkedin.com", "youtube.com", "tiktok.com",
   "t.me", "wa.me", "discord.gg", "github.com",
 ]);
-const NOISE_EXTENSIONS = /\.(png|jpe?g|gif|svg|ico|webp|css|js|woff2?|ttf|eot|pdf)(\?.*)?$/i;
+const NOISE_EXTENSIONS = /\.(png|jpe?g|gif|svg|ico|webp|css|js|woff2?|ttf|eot)(\?.*)?$/i;
 
 function isNoiseLink(href: string, text: string): boolean {
   if (!href || href === "#" || href.startsWith("javascript:") ||
       href.startsWith("mailto:") || href.startsWith("tel:")) return true;
   if (NOISE_EXTENSIONS.test(href)) return true;
-  if (!text.trim()) return true; // sem texto visível → irrelevante pro LLM
+  if (!text.trim()) return true;
   try {
     const { hostname } = new URL(href);
     if (NOISE_HOSTS.has(hostname.replace(/^www\./, ""))) return true;
-  } catch { /* URL relativa ou inválida — mantém */ }
+  } catch { /* relative or invalid URL — keep */ }
   return false;
 }
 
-// ─── Snapshot via Playwright (página renderizada com JS) ─────────────────────
+// ─── Snapshot via Playwright (rendered page with JS) ─────────────────────────
 
-export async function takeSnapshot(page: Page): Promise<PageSnapshot> {
-  const url   = page.url();
-  const title = await page.title();
+type RawSnapshotData = {
+  text: string;
+  rawLinks: { text: string; href: string; index: number }[];
+  forms: { action: string; inputs: { name: string; type: string; placeholder: string; selector: string }[] }[];
+};
 
-  const text = await page.evaluate((limit) => {
-    return document.body?.innerText?.slice(0, limit) ?? "";
-  }, TEXT_LIMIT);
+const EVALUATE_LIMITS = { textLimit: TEXT_LIMIT, linksLimit: LINKS_LIMIT, formsLimit: FORMS_LIMIT, inputsLimit: INPUTS_LIMIT };
 
-  const rawLinks: SnapshotLink[] = await page.evaluate((limit) => {
-    return Array.from(document.querySelectorAll("a[href]"))
-      .slice(0, limit * 3) // coleta mais para filtrar depois no Node.js
+function evaluatePageData(page: Page): Promise<RawSnapshotData> {
+  return page.evaluate((limits) => {
+    const text = document.body?.innerText?.slice(0, limits.textLimit) ?? "";
+
+    const rawLinks = Array.from(document.querySelectorAll("a[href]"))
+      .slice(0, limits.linksLimit * 3)
       .map((el, i) => ({
         text: (el as HTMLAnchorElement).innerText.trim().slice(0, 80),
         href: (el as HTMLAnchorElement).href,
         index: i,
       }));
-  }, LINKS_LIMIT);
 
-  const links = rawLinks
+    const forms = Array.from(document.querySelectorAll("form"))
+      .slice(0, limits.formsLimit)
+      .map((form) => ({
+        action: form.action,
+        inputs: Array.from(form.querySelectorAll("input, textarea, select"))
+          .slice(0, limits.inputsLimit)
+          .map((el) => {
+            const input = el as HTMLInputElement;
+            const id       = input.id   ? `#${input.id}`            : "";
+            const name     = input.name ? `[name="${input.name}"]`   : "";
+            const tag      = el.tagName.toLowerCase();
+            const selector = id || (name ? `${tag}${name}` : tag);
+            return {
+              name: input.name || input.id || "",
+              type: input.type || tag,
+              placeholder: input.placeholder || "",
+              selector,
+            };
+          }),
+      }));
+
+    return { text, rawLinks, forms };
+  }, EVALUATE_LIMITS);
+}
+
+export async function takeSnapshot(page: Page): Promise<PageSnapshot> {
+  const url   = page.url();
+  const title = await page.title().catch(() => url);
+
+  // Retry once if the execution context is destroyed by a mid-navigation
+  let data: RawSnapshotData;
+  try {
+    data = await evaluatePageData(page);
+  } catch {
+    // Context was destroyed — wait for the new page to settle, then retry
+    await page.waitForLoadState("domcontentloaded", { timeout: 5_000 }).catch(() => {});
+    try {
+      data = await evaluatePageData(page);
+    } catch {
+      // Still failing — return a minimal snapshot so the loop can continue
+      return { url: page.url(), title: page.url(), text: "", links: [], forms: [] };
+    }
+  }
+
+  const links = data.rawLinks
     .filter(l => !isNoiseLink(l.href, l.text))
     .slice(0, LINKS_LIMIT)
     .map((l, i) => ({ ...l, index: i }));
 
-  const forms: SnapshotForm[] = await page.evaluate((limits) => {
-    return Array.from(document.querySelectorAll("form")).slice(0, limits.forms).map((form) => ({
-      action: form.action,
-      inputs: Array.from(form.querySelectorAll("input, textarea, select"))
-        .slice(0, limits.inputs)
-        .map((el) => {
-          const input = el as HTMLInputElement;
-          const id       = input.id   ? `#${input.id}`            : "";
-          const name     = input.name ? `[name="${input.name}"]`   : "";
-          const tag      = el.tagName.toLowerCase();
-          const selector = id || (name ? `${tag}${name}` : tag);
-          return { name: input.name || input.id || "", type: input.type || tag, placeholder: input.placeholder || "", selector };
-        }),
-    }));
-  }, { forms: FORMS_LIMIT, inputs: INPUTS_LIMIT });
+  // Capture accessibility tree (non-fatal)
+  let ariaTree: string | undefined;
+  try {
+    const yaml = await page.locator("body").ariaSnapshot({ timeout: 5_000 });
+    if (yaml) ariaTree = yaml.slice(0, A11Y_LIMIT);
+  } catch { /* page in transition or not supported — skip */ }
 
-  return { url, title, text, links, forms };
+  return { url, title, text: data.text, links, forms: data.forms, ariaTree };
 }
 
-// ─── Snapshot via Cheerio (HTML estático, sem browser) ───────────────────────
+// ─── Snapshot via Cheerio (static HTML, no browser) ──────────────────────────
 
 export function snapshotFromHtml(html: string, url: string): PageSnapshot {
   const $ = cheerio.load(html);
@@ -93,13 +124,16 @@ export function snapshotFromHtml(html: string, url: string): PageSnapshot {
   $("a[href]").each((_, el) => {
     if (links.length >= LINKS_LIMIT) return false; // break
     const href = $(el).attr("href") ?? "";
-    const text = $(el).text().trim().slice(0, 80);
+    // Pre-filter raw href before URL resolution (# becomes full URL otherwise)
+    if (!href || href === "#" || href.startsWith("javascript:") ||
+        href.startsWith("mailto:") || href.startsWith("tel:")) return;
+    const linkText = $(el).text().trim().slice(0, 80);
     let absoluteHref = href;
     try {
       absoluteHref = href.startsWith("http") ? href : new URL(href, url).href;
-    } catch { /* href relativo inválido */ }
-    if (!isNoiseLink(absoluteHref, text)) {
-      links.push({ text, href: absoluteHref, index: linkIndex++ });
+    } catch { /* invalid relative href */ }
+    if (!isNoiseLink(absoluteHref, linkText)) {
+      links.push({ text: linkText, href: absoluteHref, index: linkIndex++ });
     }
   });
 
@@ -110,7 +144,9 @@ export function snapshotFromHtml(html: string, url: string): PageSnapshot {
     $(formEl).find("input, textarea, select").slice(0, INPUTS_LIMIT).each((_, inputEl) => {
       const id    = $(inputEl).attr("id")   ? `#${$(inputEl).attr("id")}`           : "";
       const name  = $(inputEl).attr("name") ? `[name="${$(inputEl).attr("name")}"]` : "";
-      const tag   = ("name" in inputEl ? (inputEl as { name: string }).name : "input").toLowerCase();
+      // cheerio AnyNode: use type guard for Element which has tagName
+      const node = inputEl as { tagName?: string };
+      const tag  = node.tagName ?? "input";
       const selector = id || (name ? `${tag}${name}` : tag);
       inputs.push({
         name:        $(inputEl).attr("name") || $(inputEl).attr("id") || "",
@@ -125,23 +161,44 @@ export function snapshotFromHtml(html: string, url: string): PageSnapshot {
   return { url, title, text, links, forms };
 }
 
-// ─── Formata snapshot para envio ao LLM ──────────────────────────────────────
+// ─── Screenshot capture (vision mode) ────────────────────────────────────────
+
+export async function captureScreenshot(page: Page, quality: number): Promise<string> {
+  const buffer = await page.screenshot({ type: "jpeg", quality });
+  return buffer.toString("base64");
+}
+
+// ─── Format snapshot for LLM ─────────────────────────────────────────────────
+
+const MAX_URL_LEN = 150;
+
+function truncUrl(url: string): string {
+  if (url.length <= MAX_URL_LEN) return url;
+  try {
+    const u = new URL(url);
+    const base = `${u.origin}${u.pathname}`;
+    if (base.length <= MAX_URL_LEN) return u.search ? `${base}?...` : base;
+    return base.slice(0, MAX_URL_LEN) + "...";
+  } catch {
+    return url.slice(0, MAX_URL_LEN) + "...";
+  }
+}
 
 export function formatSnapshot(snapshot: PageSnapshot): string {
   const lines: string[] = [
     `## Current Page`,
-    `URL: ${snapshot.url}`,
-    `Title: ${snapshot.title}`,
+    `URL: ${truncUrl(snapshot.url)}`,
+    `Title: ${snapshot.title.slice(0, 200)}`,
     "",
     `### Page Text`,
-    snapshot.text, // já truncado em TEXT_LIMIT no momento da coleta
+    snapshot.text,
     "",
   ];
 
   if (snapshot.links.length > 0) {
     lines.push(`### Links (${snapshot.links.length})`);
     for (const link of snapshot.links) {
-      lines.push(`[${link.index}] "${link.text}" -> ${link.href}`);
+      lines.push(`[${link.index}] "${link.text}" -> ${truncUrl(link.href)}`);
     }
     lines.push("");
   }
@@ -154,6 +211,13 @@ export function formatSnapshot(snapshot: PageSnapshot): string {
         lines.push(`  - ${input.type} name="${input.name}" placeholder="${input.placeholder}" selector="${input.selector}"`);
       }
     }
+    lines.push("");
+  }
+
+  if (snapshot.ariaTree) {
+    lines.push(`### Accessibility Tree`);
+    lines.push(snapshot.ariaTree);
+    lines.push("");
   }
 
   return lines.join("\n");

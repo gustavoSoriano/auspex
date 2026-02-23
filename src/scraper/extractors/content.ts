@@ -139,8 +139,9 @@ export interface LinkWithMetadata {
 export function extractLinksWithMetadata(
   html: string,
   baseUrl: string,
+  existing$?: CheerioAPI,
 ): LinkWithMetadata[] {
-  const $ = load(html);
+  const $ = existing$ ?? load(html);
   const links: LinkWithMetadata[] = [];
   const seen = new Set<string>();
 
@@ -297,8 +298,9 @@ export function extractContent(
   html: string,
   onlyMain = true,
   baseUrl?: string,
+  existing$?: CheerioAPI,
 ): ExtractedContent {
-  const $ = load(html);
+  const $ = existing$ ?? load(html);
 
   // Extrai metadados e links ANTES de remover elementos de navegação
   const { title, description } = extractMeta($);

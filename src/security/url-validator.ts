@@ -14,6 +14,13 @@ const PRIVATE_IP_RANGES = [
   /^fc00:/i,
   /^fe80:/i,
   /^::1$/,
+  // IPv6-mapped IPv4 addresses (::ffff:127.0.0.1, ::ffff:10.0.0.1, etc.)
+  /^::ffff:127\./i,
+  /^::ffff:10\./i,
+  /^::ffff:192\.168\./i,
+  /^::ffff:172\.(1[6-9]|2\d|3[01])\./i,
+  /^::ffff:169\.254\./i,
+  /^::ffff:0\./i,
 ];
 
 function isPrivateIp(ip: string): boolean {
@@ -79,6 +86,7 @@ export async function validateUrl(
     }
   }
 
+  // DNS rebinding protection — fail CLOSED on DNS errors
   try {
     const addresses = await resolve(hostname);
     for (const addr of addresses) {
@@ -90,7 +98,10 @@ export async function validateUrl(
     }
   } catch (err) {
     if (err instanceof UrlValidationError) throw err;
-    // DNS resolution failed — allow the request through, the browser will handle the error
+    // DNS resolution failed — reject for safety (fail closed)
+    throw new UrlValidationError(
+      `DNS resolution failed for ${hostname} — rejecting for safety`,
+    );
   }
 
   return parsed.href;
