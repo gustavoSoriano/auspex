@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
-import { chromium, type Browser, type Page } from "playwright";
+import { type Browser, type Page } from "playwright";
 import { gotScraping } from "got-scraping";
+import { launchStealthBrowser, STEALTH_INIT_SCRIPT, CHROME_UA } from "../browser/stealth.js";
 import { type ZodType } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { AgentConfig, AgentResult, RunOptions, AuspexEvents, AgentAction, PageSnapshot, CookieParam } from "../types.js";
@@ -49,20 +50,17 @@ export class Auspex extends EventEmitter {
 
     if (!this.browserPromise) {
       this.browserPromise = (async () => {
-        const launchOptions: Parameters<typeof chromium.launch>[0] = {
-          headless: true,
-          args: ["--disable-blink-features=AutomationControlled"],
-        };
+        const launchOptions = this.config.proxy
+          ? {
+              proxy: {
+                server: this.config.proxy.server,
+                username: this.config.proxy.username,
+                password: this.config.proxy.password,
+              },
+            }
+          : {};
 
-        if (this.config.proxy) {
-          launchOptions.proxy = {
-            server: this.config.proxy.server,
-            username: this.config.proxy.username,
-            password: this.config.proxy.password,
-          };
-        }
-
-        const browser = await chromium.launch(launchOptions);
+        const browser = await launchStealthBrowser(launchOptions);
         this.browser = browser;
         this.browserPromise = null;
         return browser;
@@ -166,7 +164,8 @@ export class Auspex extends EventEmitter {
 
     try {
       const contextOptions: Parameters<Browser["newContext"]>[0] = {
-        viewport: { width: 1280, height: 720 },
+        userAgent: CHROME_UA,
+        viewport: { width: 1920, height: 1080 },
         locale: "pt-BR",
         timezoneId: "America/Sao_Paulo",
         extraHTTPHeaders: this.config.extraHeaders,
@@ -198,10 +197,8 @@ export class Auspex extends EventEmitter {
         );
       }
 
-      context.addInitScript(() => {
-        Object.defineProperty(navigator, "webdriver", { get: () => false, configurable: true });
-        (window as unknown as { chrome?: unknown }).chrome = { runtime: {} };
-      });
+      // Apply comprehensive stealth patches (second layer on top of playwright-extra stealth plugin)
+      await context.addInitScript(STEALTH_INIT_SCRIPT);
 
       page = await context.newPage();
       const gotoTimeout = effectiveConfig.gotoTimeoutMs ?? 15_000;

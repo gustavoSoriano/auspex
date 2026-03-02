@@ -42,9 +42,9 @@ async function main() {
   });
 
   const result = await agent.run({
-    url: "https://books.toscrape.com",
+    url: "https://www.falamatao.com.br",
     prompt:
-      "procure no menu por: Crime depois The Long Shadow of Small Ghosts: Murder and Memory in an American City e me devolva um resumo",
+      "Liste todas as noticias encontradas",
   });
 
   console.log(result);

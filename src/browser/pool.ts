@@ -1,4 +1,5 @@
-import { chromium, type Browser, type LaunchOptions } from "playwright";
+import { type Browser, type LaunchOptions } from "playwright";
+import { launchStealthBrowser } from "./stealth.js";
 
 export interface BrowserPoolOptions {
   /** Maximum number of browser instances. Default: 3 */
@@ -27,10 +28,7 @@ export class BrowserPool {
   constructor(options: BrowserPoolOptions = {}) {
     this.maxSize = options.maxSize ?? 3;
     this.acquireTimeoutMs = options.acquireTimeoutMs ?? 30_000;
-    this.launchOptions = options.launchOptions ?? {
-      headless: true,
-      args: ["--disable-blink-features=AutomationControlled"],
-    };
+    this.launchOptions = options.launchOptions ?? { headless: true };
   }
 
   /** Acquire a browser instance. Blocks if all are in use and pool is at max capacity. */
@@ -48,7 +46,7 @@ export class BrowserPool {
 
     // 2. Launch a new one if under capacity
     if (this.browsers.length < this.maxSize) {
-      const browser = await chromium.launch(this.launchOptions);
+      const browser = await launchStealthBrowser(this.launchOptions);
       this.browsers.push(browser);
 
       // Auto-remove from pool if browser crashes
