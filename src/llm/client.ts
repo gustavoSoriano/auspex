@@ -56,12 +56,13 @@ export class LLMClient {
     screenshot?: string,
     visionAvailable?: boolean,
     searchAvailable?: boolean,
+    timeStatus?: { remainingMs: number; totalMs: number; iteration: number; maxIterations: number },
   ): Promise<LLMResponse> {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const textContent = buildUserMessage(prompt, snapshot, history, schemaDescription);
+        const textContent = buildUserMessage(prompt, snapshot, history, schemaDescription, timeStatus);
         const userContent: string | ChatCompletionContentPart[] = screenshot
           ? buildVisionContent(textContent, screenshot)
           : textContent;

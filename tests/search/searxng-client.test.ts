@@ -142,9 +142,9 @@ describe("SearXNGClient", () => {
       expect(results).toHaveLength(3);
     });
 
-    it("should use default of 5 results when not specified", async () => {
+    it("should use default of 20 results when not specified", async () => {
       const mockResponse = {
-        results: Array.from({ length: 10 }, (_, i) => ({
+        results: Array.from({ length: 25 }, (_, i) => ({
           title: `Result ${i}`,
           url: `https://example.com/${i}`,
           content: `Content ${i}`,
@@ -159,12 +159,12 @@ describe("SearXNGClient", () => {
       const client = new SearXNGClient(VALID_LOCALHOST_URL);
       const results = await client.search("test");
 
-      expect(results).toHaveLength(5);
+      expect(results).toHaveLength(20);
     });
 
-    it("should enforce maximum of 10 results", async () => {
+    it("should enforce maximum of 40 results", async () => {
       const mockResponse = {
-        results: Array.from({ length: 20 }, () => ({ title: "X", url: "y", content: "z", score: 1 })),
+        results: Array.from({ length: 50 }, () => ({ title: "X", url: "y", content: "z", score: 1 })),
       };
 
       mockGet.mockReturnValue({
@@ -174,7 +174,7 @@ describe("SearXNGClient", () => {
       const client = new SearXNGClient(VALID_LOCALHOST_URL);
       const results = await client.search("test", 100);
 
-      expect(results).toHaveLength(10);
+      expect(results).toHaveLength(40);
     });
 
     // ── Query validation ─────────────────────────────────────────────────────
@@ -191,8 +191,8 @@ describe("SearXNGClient", () => {
 
     it("should reject query exceeding max length", async () => {
       const client = new SearXNGClient(VALID_LOCALHOST_URL);
-      const longQuery = "a".repeat(501);
-      await expect(client.search(longQuery)).rejects.toThrow("exceeds maximum length of 500");
+      const longQuery = "a".repeat(2001);
+      await expect(client.search(longQuery)).rejects.toThrow("exceeds maximum length of 2000");
     });
 
     it("should trim query", async () => {

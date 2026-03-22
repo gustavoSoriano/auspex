@@ -114,6 +114,13 @@ export async function runStaticLoop(
     blockedDomains: config.blockedDomains,
   };
 
+  const timeStatus = {
+    remainingMs: config.timeoutMs,
+    totalMs: config.timeoutMs,
+    iteration: 0,
+    maxIterations: 1, // Static loop is single-shot
+  };
+
   const llm = new LLMClient(
     config.llmApiKey,
     config.model,
@@ -146,6 +153,7 @@ export async function runStaticLoop(
       undefined,
       undefined,
       searchAvailable,
+      timeStatus,
     );
     raw = response.data;
     usage.promptTokens     = response.usage.promptTokens;
@@ -235,6 +243,14 @@ export async function runAgentLoop(
   const recentActionKeys: string[] = [];
   const startTime = Date.now();
 
+  // Time status for agent awareness
+  const getTimeStatus = (iteration: number) => ({
+    remainingMs: config.timeoutMs - (Date.now() - startTime),
+    totalMs: config.timeoutMs,
+    iteration,
+    maxIterations,
+  });
+
   // ── Vision auto-fallback ─────────────────────────────────────────────
   // When vision=true, screenshots are NOT sent from the start.
   // They activate automatically after consecutive failures (invalid actions,
@@ -300,7 +316,8 @@ export async function runAgentLoop(
     let raw: unknown;
     try {
       const searchAvailable = !!loopOptions.searxngClient;
-      const response = await llm.decideAction(prompt, formatted, windowedHistory(history), loopOptions.schemaDescription, screenshot, visionAvailable, searchAvailable);
+      const timeStatus = getTimeStatus(i);
+      const response = await llm.decideAction(prompt, formatted, windowedHistory(history), loopOptions.schemaDescription, screenshot, visionAvailable, searchAvailable, timeStatus);
       raw = response.data;
       usage.promptTokens     += response.usage.promptTokens;
       usage.completionTokens += response.usage.completionTokens;

@@ -1,5 +1,24 @@
 const BASE_SYSTEM_PROMPT = `You are a browser automation agent. You navigate web pages and perform actions to accomplish the user's goal.
 
+## Time Awareness
+You have a limited time budget. The current status will be shown below as:
+⏱️ Time: <remaining>s / <total>s | Iteration: <current>/<max>
+
+**When remaining time is LOW (<25%):**
+- Stop exploring and be decisive
+- Return "done" with partial results if you have useful information
+- Avoid opening new tabs or navigating to unfamiliar pages
+- A partial answer is better than timing out with nothing
+
+**When remaining time is MEDIUM (25-50%):**
+- Prioritize direct paths to the goal
+- Limit exploration to 1-2 alternatives
+- Consider if current information is sufficient
+
+**When time is PLENTIFUL (>50%):**
+- Explore multiple approaches if needed
+- Thoroughly verify information
+
 ## Rules
 - You can ONLY respond with a single JSON action object. No extra text.
 - Available actions:
@@ -103,8 +122,24 @@ export function buildUserMessage(
   snapshot: string,
   history: string[],
   schemaDescription?: string,
+  timeStatus?: { remainingMs: number; totalMs: number; iteration: number; maxIterations: number },
 ): string {
-  const parts: string[] = [`## Task\n${prompt}`, `\n${snapshot}`];
+  const parts: string[] = [`## Task\n${prompt}`];
+
+  // Add time status if provided
+  if (timeStatus) {
+    const { remainingMs, totalMs, iteration, maxIterations } = timeStatus;
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    const totalSec = Math.ceil(totalMs / 1000);
+    const percentRemaining = Math.round((remainingMs / totalMs) * 100);
+    const urgency = percentRemaining < 25 ? "⚠️ LOW" : percentRemaining < 50 ? "⚡ MEDIUM" : "✅ PLENTIFUL";
+
+    parts.push(
+      `\n## Time Status\n⏱️ Time: ${remainingSec}s / ${totalSec}s (${urgency} ${percentRemaining}%) | Iteration: ${iteration}/${maxIterations}`
+    );
+  }
+
+  parts.push(`\n${snapshot}`);
 
   if (schemaDescription) {
     parts.push(
