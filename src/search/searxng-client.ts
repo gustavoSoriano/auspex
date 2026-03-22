@@ -6,64 +6,42 @@ const DEFAULT_NUM_RESULTS = 5;
 const MAX_NUM_RESULTS = 10;
 
 // ─── Security: URL validation ────────────────────────────────────────────────
+// Base URL is operator-configured (config / env), not user-controlled — it is not tied to
+// AgentConfig.allowedDomains (navigation allowlist). Only blockedDomains applies here.
 
-const LOCALHOST_PATTERNS = [
-  /^https?:\/\/localhost(?::\d+)?$/i,
-  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i,
-  /^https?:\/\/\[::1\](?::\d+)?$/i,
-];
+const SEARXNG_ALLOWED_PROTOCOLS = new Set(["http:", "https:"]);
 
-function isLocalhost(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    const origin = `${parsed.protocol}//${parsed.host}`;
-    return LOCALHOST_PATTERNS.some(pattern => pattern.test(origin));
-  } catch {
-    return false;
-  }
-}
-
-/** Same hostname rules as navigation URLs: exact match or subdomain of an allowed entry. */
+/** Same hostname rules as navigation URLs: exact match or subdomain of an entry. */
 function hostnameMatchesList(hostname: string, domains: string[]): boolean {
   return domains.some((d) => hostname === d || hostname.endsWith(`.${d}`));
 }
 
 export interface SearXNGClientOptions {
   timeout?: number;
-  /** Non-localhost base URLs are allowed only when the hostname matches (same rules as AgentConfig.allowedDomains). */
-  allowedDomains?: string[];
   /** Hostnames that must not be used for SearXNG (same rules as AgentConfig.blockedDomains). */
   blockedDomains?: string[];
 }
 
-function validateSearxngBaseUrl(
-  baseUrl: string,
-  allowedDomains?: string[],
-  blockedDomains?: string[],
-): void {
-  let hostname: string;
+function validateSearxngBaseUrl(baseUrl: string, blockedDomains?: string[]): void {
+  let parsed: URL;
   try {
-    hostname = new URL(baseUrl).hostname;
+    parsed = new URL(baseUrl);
   } catch {
     throw new Error(`Invalid SearXNG base URL: ${baseUrl}`);
+  }
+
+  if (!SEARXNG_ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error(`SearXNG base URL must use http or https: ${baseUrl}`);
+  }
+
+  const hostname = parsed.hostname;
+  if (!hostname) {
+    throw new Error(`Invalid SearXNG base URL (missing host): ${baseUrl}`);
   }
 
   if (blockedDomains && blockedDomains.length > 0 && hostnameMatchesList(hostname, blockedDomains)) {
     throw new Error(`SearXNG hostname is blocked: ${hostname}`);
   }
-
-  if (isLocalhost(baseUrl)) {
-    return;
-  }
-
-  if (allowedDomains && allowedDomains.length > 0 && hostnameMatchesList(hostname, allowedDomains)) {
-    return;
-  }
-
-  throw new Error(
-    `SearXNG URL must use localhost (127.0.0.1, ::1) or match allowedDomains. Got: ${baseUrl}. ` +
-      `For a remote instance, include the SearXNG hostname in allowedDomains (e.g. allowedDomains: ["${hostname}"]).`,
-  );
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -94,7 +72,7 @@ export class SearXNGClient {
 
   constructor(baseUrl: string, options?: SearXNGClientOptions) {
     const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
-    validateSearxngBaseUrl(baseUrl, options?.allowedDomains, options?.blockedDomains);
+    validateSearxngBaseUrl(baseUrl, options?.blockedDomains);
 
     // Remove trailing slash for consistency
     this.baseUrl = baseUrl.replace(/\/$/, "");

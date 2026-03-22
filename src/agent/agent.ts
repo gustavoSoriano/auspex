@@ -97,7 +97,6 @@ export class Auspex extends EventEmitter {
     }
 
     const searxngClientOpts = {
-      allowedDomains: effectiveConfig.allowedDomains,
       blockedDomains: effectiveConfig.blockedDomains,
     };
 

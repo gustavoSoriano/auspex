@@ -75,7 +75,7 @@ export interface AgentConfig {
   vision?: boolean;
   /** JPEG quality for screenshots (1-100). Lower = smaller payload, fewer tokens. Default: 75 */
   screenshotQuality?: number;
-  /** SearXNG base URL for web search. If not set, uses SEARXNG_URL. Must be loopback (localhost / 127.0.0.1 / ::1) unless the host is covered by allowedDomains. */
+  /** SearXNG base URL for web search (operator-configured; not restricted by allowedDomains). If not set, uses SEARXNG_URL. */
   searxngUrl?: string;
 }
 

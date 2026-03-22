@@ -189,7 +189,7 @@ new Auspex({
   screenshotQuality: 75,           // qualidade JPEG 1-100 (vision, default: 75)
 
   // ──── Web Search ──────────────────────────────────
-  searxngUrl: "http://localhost:8080",  // base URL do SearXNG (localhost por padrao; remoto exige allowedDomains)
+  searxngUrl: "http://localhost:8080",  // base URL do SearXNG (config confiavel; independente de allowedDomains)
 });
 ```
 
@@ -220,7 +220,7 @@ new Auspex({
 | `logDir` | `string` | Nao | `"logs"` | Diretorio dos arquivos de log |
 | `vision` | `boolean` | Nao | `false` | Fallback com screenshot apos falhas (modelo vision) |
 | `screenshotQuality` | `number` | Nao | `75` | Qualidade JPEG 1-100 para screenshots |
-| `searxngUrl` | `string` | Nao | — | Base URL do SearXNG (loopback por padrao; instancia remota so se o host estiver em allowedDomains) |
+| `searxngUrl` | `string` | Nao | — | Base URL do SearXNG (`http`/`https`; nao depende de `allowedDomains`) |
 
 ---
 
@@ -556,7 +556,7 @@ Ou via variavel de ambiente:
 export SEARXNG_URL=http://localhost:8080
 ```
 
-> **Nota**: Por padrao o `searxngUrl` deve apontar para loopback (`localhost`, `127.0.0.1` ou `[::1]`). Para usar um SearXNG em outro host (ex.: rede interna), inclua o hostname desse servidor em `allowedDomains` (mesmas regras de subdominio que para navegacao).
+> **Nota**: O `searxngUrl` e definido por voce (config / `SEARXNG_URL`) e **nao** e limitado pela whitelist `allowedDomains` da navegacao — assim voce pode usar SearXNG em localhost, IP interno ou host publico sem precisar listar esse host em `allowedDomains`. O hostname do SearXNG ainda respeita `blockedDomains`, se configurado.
 
 ### Busca inicial (sem URL)
 
@@ -638,7 +638,7 @@ services:
 
 ### Seguranca
 
-- **Validacao de URL**: loopback por padrao; hosts remotos apenas se o hostname do SearXNG estiver em `allowedDomains` (e respeitando `blockedDomains`)
+- **Validacao da base URL**: apenas `http`/`https`; hostname do SearXNG pode ser bloqueado via `blockedDomains` (independente da whitelist `allowedDomains` de navegacao)
 - **Sanitizacao de query**: maximo 500 caracteres, sem caracteres perigosos
 - **Timeout**: 5 segundos para requisicoes ao SearXNG
 - **Rate limiting**: configure rate limiting no proprio SearXNG se necessario

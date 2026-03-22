@@ -45,35 +45,20 @@ describe("SearXNGClient", () => {
       expect(() => new SearXNGClient("https://localhost:8443")).not.toThrow();
     });
 
-    it("should reject non-localhost URLs without allowedDomains", () => {
-      expect(() => new SearXNGClient("https://example.com"))
-        .toThrow("SearXNG URL must use localhost");
-      expect(() => new SearXNGClient("http://192.168.1.1:8080"))
-        .toThrow("SearXNG URL must use localhost");
-      expect(() => new SearXNGClient("http://searxng.example.com"))
-        .toThrow("SearXNG URL must use localhost");
+    it("should accept remote URLs (operator-configured base URL)", () => {
+      expect(() => new SearXNGClient("https://example.com")).not.toThrow();
+      expect(() => new SearXNGClient("http://192.168.1.1:8080")).not.toThrow();
+      expect(() => new SearXNGClient("http://searxng.example.com")).not.toThrow();
+      expect(() => new SearXNGClient("https://203.0.113.5:8443")).not.toThrow();
     });
 
-    it("should accept remote URL when hostname is in allowedDomains", () => {
-      expect(() =>
-        new SearXNGClient("https://searxng.example.com", {
-          allowedDomains: ["example.com"],
-        }),
-      ).not.toThrow();
-    });
-
-    it("should accept remote URL when hostname matches allowedDomains exactly", () => {
-      expect(() =>
-        new SearXNGClient("https://search.internal.corp", {
-          allowedDomains: ["search.internal.corp"],
-        }),
-      ).not.toThrow();
+    it("should reject non-http(s) schemes", () => {
+      expect(() => new SearXNGClient("ftp://localhost:8080")).toThrow("must use http or https");
     });
 
     it("should reject remote URL when hostname is in blockedDomains", () => {
       expect(() =>
         new SearXNGClient("https://searxng.example.com", {
-          allowedDomains: ["example.com"],
           blockedDomains: ["searxng.example.com"],
         }),
       ).toThrow("SearXNG hostname is blocked");
