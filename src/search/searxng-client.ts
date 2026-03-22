@@ -1,9 +1,9 @@
 import { got } from "got";
 
-const MAX_QUERY_LENGTH = 500;
+const MAX_QUERY_LENGTH = 2000;
 const DEFAULT_TIMEOUT = 5000;
-const DEFAULT_NUM_RESULTS = 5;
-const MAX_NUM_RESULTS = 10;
+const DEFAULT_NUM_RESULTS = 20;
+const MAX_NUM_RESULTS = 40;
 
 // ─── Security: URL validation ────────────────────────────────────────────────
 // Base URL is operator-configured (config / env), not user-controlled — it is not tied to
