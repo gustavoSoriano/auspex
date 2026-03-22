@@ -195,6 +195,23 @@ export function formatSnapshot(snapshot: PageSnapshot): string {
     "",
   ];
 
+  // ── Search Results (if any) ─────────────────────────────────────────────
+  if (snapshot.searchResults && snapshot.searchResults.length > 0) {
+    lines.push(`### Search Results (${snapshot.searchResults.length})`);
+    for (let i = 0; i < snapshot.searchResults.length; i++) {
+      const r = snapshot.searchResults[i];
+      lines.push(`${i + 1}. ${r.title}`);
+      lines.push(`   ${truncUrl(r.url)}`);
+      // Truncate content to avoid too long snapshots
+      const contentPreview = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
+      lines.push(`   ${contentPreview}`);
+      if (r.score > 0) {
+        lines.push(`   Score: ${r.score}`);
+      }
+    }
+    lines.push("");
+  }
+
   if (snapshot.links.length > 0) {
     lines.push(`### Links (${snapshot.links.length})`);
     for (const link of snapshot.links) {

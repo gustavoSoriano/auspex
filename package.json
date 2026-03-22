@@ -19,6 +19,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "example": "tsx examples/basic.ts",
+    "example:websearch": "tsx examples/websearch.ts",
     "example:scraper": "tsx examples/scraper.ts",
     "install:browser": "playwright install chromium",
     "test": "vitest run",

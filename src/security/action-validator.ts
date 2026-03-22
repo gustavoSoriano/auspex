@@ -29,6 +29,10 @@ const ALLOWED_KEYS = [
 ] as const;
 
 export const actionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("search"),
+    query: z.string().min(1).max(500),
+  }),
   z.object({ type: z.literal("click"), selector: selectorSchema }),
   z.object({
     type: z.literal("type"),

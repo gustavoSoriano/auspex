@@ -43,16 +43,27 @@ export const agentConfigSchema = z.object({
   logDir: z.string().default("logs"),
   vision: z.boolean().default(DEFAULTS.vision),
   screenshotQuality: z.number().int().min(1).max(100).default(DEFAULTS.screenshotQuality),
+  searxngUrl: z.string().url().optional(),
+}).transform((data) => {
+  // Resolve searxngUrl from env var if not provided in config
+  if (!data.searxngUrl && process.env.SEARXNG_URL) {
+    return { ...data, searxngUrl: process.env.SEARXNG_URL };
+  }
+  return data;
 });
 
 export const runOptionsSchema = z.object({
-  url: z.string().url("url must be a valid URL"),
+  url: z.string().url("url must be a valid URL").optional(),
   prompt: z.string().min(1, "prompt is required"),
   maxIterations: z.number().int().positive().optional(),
   timeoutMs: z.number().int().positive().optional(),
   actionDelayMs: z.number().int().min(0).optional(),
   schema: z.custom<ZodType>().optional(),
   vision: z.boolean().optional(),
-});
+  searxngUrl: z.string().url().optional(),
+}).refine(
+  (data) => data.url || data.searxngUrl || process.env.SEARXNG_URL,
+  "Either url or searxngUrl must be provided (or set SEARXNG_URL environment variable)",
+);
 
 export type ValidatedConfig = z.infer<typeof agentConfigSchema>;

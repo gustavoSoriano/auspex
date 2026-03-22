@@ -12,6 +12,7 @@ import { runStaticLoop, runAgentLoop } from "./loop.js";
 import { generateReport } from "./report.js";
 import { RunLogger } from "./logger.js";
 import type { BrowserPool } from "../browser/pool.js";
+import { SearXNGClient } from "../search/searxng-client.js";
 
 export class Auspex extends EventEmitter {
   private config: ValidatedConfig;
@@ -81,7 +82,7 @@ export class Auspex extends EventEmitter {
   async run(options: RunOptions): Promise<AgentResult>;
   async run(options: RunOptions): Promise<AgentResult> {
     const validated = runOptionsSchema.parse(options);
-    const { url, prompt } = validated;
+    let { url, prompt } = validated;
     const signal = options.signal;
     const schema = options.schema as ZodType | undefined;
 
@@ -91,6 +92,39 @@ export class Auspex extends EventEmitter {
     if (validated.timeoutMs) effectiveConfig.timeoutMs = validated.timeoutMs;
     if (validated.actionDelayMs !== undefined) effectiveConfig.actionDelayMs = validated.actionDelayMs;
     if (validated.vision !== undefined) effectiveConfig.vision = validated.vision;
+    if (validated.searxngUrl) {
+      effectiveConfig.searxngUrl = validated.searxngUrl;
+    }
+
+    const searxngClientOpts = {
+      allowedDomains: effectiveConfig.allowedDomains,
+      blockedDomains: effectiveConfig.blockedDomains,
+    };
+
+    // ── Web search initial (when URL not provided) ─────────────────────
+    let searchResults: { title: string; url: string; content: string; score: number }[] | undefined;
+    if (!url) {
+      const searxngUrl = effectiveConfig.searxngUrl ?? process.env.SEARXNG_URL;
+      if (searxngUrl) {
+        try {
+          const searxng = new SearXNGClient(searxngUrl, searxngClientOpts);
+          const results = await searxng.search(prompt, 3);
+
+          if (results.length === 0) {
+            return this.makeErrorResult(prompt, "No search results found. Try a more specific query or provide a URL directly.");
+          }
+
+          // Use first result as starting point
+          url = results[0].url;
+          searchResults = results;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          return this.makeErrorResult(prompt, `Web search failed: ${msg}`);
+        }
+      } else {
+        return this.makeErrorResult(prompt, "URL is required when web search is not configured. Set searxngUrl in config or SEARXNG_URL environment variable.");
+      }
+    }
 
     // ── Logger setup ─────────────────────────────────────────────────────
     const logger = effectiveConfig.log ? new RunLogger(effectiveConfig.logDir) : null;
@@ -142,7 +176,10 @@ export class Auspex extends EventEmitter {
 
         if (snapshot.text.length > 200) {
           this.emit("tier", "http");
-          const staticLoop = await runStaticLoop(snapshot, validUrl, prompt, effectiveConfig, signal, schemaDescription);
+          const staticLoop = await runStaticLoop(snapshot, validUrl, prompt, effectiveConfig, signal, schemaDescription, {
+            initialSearchResults: searchResults,
+            searchAvailable: !!effectiveConfig.searxngUrl,
+          });
           staticLoopUsage = staticLoop.usage;
           if (staticLoop.result) {
             const finalResult = this.applySchema(staticLoop.result, schema, validUrl, prompt);
@@ -209,6 +246,10 @@ export class Auspex extends EventEmitter {
         maxTotalTokens: effectiveConfig.maxTotalTokens,
         signal,
         schemaDescription,
+        searxngClient: effectiveConfig.searxngUrl
+          ? new SearXNGClient(effectiveConfig.searxngUrl, searxngClientOpts)
+          : undefined,
+        initialSearchResults: searchResults,
         onAction: (action: AgentAction, iteration: number) => {
           logger?.logAction(action, iteration);
           this.emit("action", action, iteration);
@@ -309,6 +350,22 @@ export class Auspex extends EventEmitter {
       error: "Aborted by user",
     };
     result.report = generateReport(result, url, prompt);
+    return result;
+  }
+
+  private makeErrorResult(prompt: string, error: string): AgentResult {
+    const result: AgentResult = {
+      status: "error",
+      tier: "http",
+      data: null,
+      report: "",
+      durationMs: 0,
+      actions: [],
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 },
+      memory: { browserPeakRssKb: 0, nodeHeapUsedMb: 0 },
+      error,
+    };
+    result.report = generateReport(result, "", prompt);
     return result;
   }
 }

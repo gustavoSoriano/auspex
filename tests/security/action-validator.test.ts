@@ -4,6 +4,11 @@ import { validateAction, ActionValidationError } from "../../src/security/action
 describe("validateAction", () => {
   // ── Valid actions ──────────────────────────────────────────────────────
 
+  it("should accept valid search action", () => {
+    const result = validateAction({ type: "search", query: "test query" });
+    expect(result).toEqual({ type: "search", query: "test query" });
+  });
+
   it("should accept valid click action", () => {
     const result = validateAction({ type: "click", selector: "#btn" });
     expect(result).toEqual({ type: "click", selector: "#btn" });
@@ -77,6 +82,18 @@ describe("validateAction", () => {
 
   it("should reject unknown action type", () => {
     expect(() => validateAction({ type: "execute", code: "alert(1)" })).toThrow(ActionValidationError);
+  });
+
+  // ── Search action validation ─────────────────────────────────────────────
+
+  it("should reject search with empty query", () => {
+    expect(() => validateAction({ type: "search", query: "" }))
+      .toThrow(ActionValidationError);
+  });
+
+  it("should reject search with query exceeding max length", () => {
+    expect(() => validateAction({ type: "search", query: "a".repeat(501) }))
+      .toThrow(ActionValidationError);
   });
 
   it("should reject null/undefined", () => {

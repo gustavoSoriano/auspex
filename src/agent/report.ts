@@ -3,6 +3,8 @@ import type { AgentResult, ActionRecord } from "../types.js";
 function describeAction(record: ActionRecord): string {
   const { action } = record;
   switch (action.type) {
+    case "search":
+      return `Searched web for "${action.query}"`;
     case "click":
       return `Clicked element "${action.selector}"`;
     case "type":

@@ -17,6 +17,8 @@ export async function parseAndValidateAction(
 
 export function formatActionForHistory(action: AgentAction, iteration: number): string {
   switch (action.type) {
+    case "search":
+      return `[${iteration}] search "${action.query}"`;
     case "click":
       return `[${iteration}] click "${action.selector}"`;
     case "type":

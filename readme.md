@@ -4,7 +4,7 @@
 https://www.npmjs.com/package/auspex
 
 Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e um **prompt em linguagem natural** — o agent decide sozinho se basta uma requisicao HTTP ou se precisa abrir o Playwright, navega, clica, preenche formularios e retorna o resultado com um relatorio completo.
-
+Além disso, é compatível com Web Search através de SearXNG
 ---
 
 ## Indice
@@ -21,6 +21,7 @@ Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e u
 - [Eventos](#eventos)
 - [Browser Pool](#browser-pool)
 - [Acoes do Agent](#acoes-do-agent)
+- [Web Search com SearXNG](#web-search-com-searxng)
 - [Seguranca](#seguranca)
 - [Monitoramento — Tokens e Memoria](#monitoramento--tokens-e-memoria)
 - [Dicas de uso](#dicas-de-uso)
@@ -186,6 +187,9 @@ new Auspex({
   logDir: "logs",                 // diretorio dos logs
   vision: false,                  // fallback com screenshot apos falhas (modelo com vision)
   screenshotQuality: 75,           // qualidade JPEG 1-100 (vision, default: 75)
+
+  // ──── Web Search ──────────────────────────────────
+  searxngUrl: "http://localhost:8080",  // base URL do SearXNG (localhost por padrao; remoto exige allowedDomains)
 });
 ```
 
@@ -216,6 +220,7 @@ new Auspex({
 | `logDir` | `string` | Nao | `"logs"` | Diretorio dos arquivos de log |
 | `vision` | `boolean` | Nao | `false` | Fallback com screenshot apos falhas (modelo vision) |
 | `screenshotQuality` | `number` | Nao | `75` | Qualidade JPEG 1-100 para screenshots |
+| `searxngUrl` | `string` | Nao | — | Base URL do SearXNG (loopback por padrao; instancia remota so se o host estiver em allowedDomains) |
 
 ---
 
@@ -225,7 +230,7 @@ Opcoes passadas para `agent.run(options)`:
 
 | Parametro | Tipo | Obrigatorio | Descricao |
 |-----------|------|:-----------:|-----------|
-| `url` | `string` | Sim | URL inicial para o agent navegar |
+| `url` | `string` | Nao\* | URL inicial para o agent navegar (obrigatorio se sem SearXNG) |
 | `prompt` | `string` | Sim | Instrucao em linguagem natural |
 | `maxIterations` | `number` | Nao | Override de maxIterations para este run |
 | `timeoutMs` | `number` | Nao | Override de timeoutMs para este run |
@@ -233,6 +238,9 @@ Opcoes passadas para `agent.run(options)`:
 | `signal` | `AbortSignal` | Nao | AbortSignal para cancelar o run |
 | `schema` | `ZodType<T>` | Nao | Schema Zod: retorno tipado em `data` (T \| null) |
 | `vision` | `boolean` | Nao | Override do fallback com screenshot |
+| `searxngUrl` | `string` | Nao | Override do SearXNG **neste run** (sobrescreve `AgentConfig` / `SEARXNG_URL`) |
+
+\* Se `url` nao for fornecida, o agent usa web search (SearXNG) para a URL inicial. Nesse caso configure `searxngUrl` no `run()`, no `AgentConfig`, ou `SEARXNG_URL` no ambiente (na construcao do agent o env e aplicado ao config).
 
 ```typescript
 const result = await agent.run({
@@ -503,6 +511,7 @@ O LLM so pode executar acoes de uma **whitelist rigorosa**. Qualquer coisa fora 
 
 | Acao | Formato JSON | Descricao |
 |------|-------------|-----------|
+| **search** | `{"type":"search","query":"buscar isso"}` | Busca na web via SearXNG (max 500 chars) |
 | **click** | `{"type":"click","selector":"#btn"}` | Clica em um elemento (CSS ou role=button[name="..."] ) |
 | **type** | `{"type":"type","selector":"input[name='q']","text":"busca"}` | Digita texto em um campo (max 1000 chars) |
 | **select** | `{"type":"select","selector":"select#country","value":"br"}` | Seleciona opcao em `<select>` (value = option value) |
@@ -514,6 +523,125 @@ O LLM so pode executar acoes de uma **whitelist rigorosa**. Qualquer coisa fora 
 | **done** | `{"type":"done","result":"..."}` | Finaliza e retorna o resultado (max 50k chars) |
 
 Selectors podem ser **CSS** ou **role-based** (ex.: `role=button[name="Submit"]`) quando a Accessibility Tree esta no snapshot.
+
+---
+
+## Web Search com SearXNG
+
+O auspex suporta busca web via [SearXNG](https://searxng.org/) para descobrir URLs automaticamente e permitir que o agente faca buscas durante o loop.
+
+### Exemplo no repositorio
+
+Com `LLM_API_KEY` e `SEARXNG_URL` (ou SearXNG em localhost:8080) no `.env`:
+
+```bash
+npm run example:websearch
+```
+
+Veja [`examples/websearch.ts`](examples/websearch.ts) — execucao sem `url` (busca inicial) e com `url` (fluxo normal com acao `search` disponivel).
+
+### Configuracao
+
+Configure a URL do SearXNG no `AgentConfig` ou via variavel de ambiente:
+
+```typescript
+const agent = new Auspex({
+  llmApiKey: process.env.LLM_API_KEY!,
+  searxngUrl: process.env.SEARXNG_URL, // ex: "http://localhost:8080"
+});
+```
+
+Ou via variavel de ambiente:
+```bash
+export SEARXNG_URL=http://localhost:8080
+```
+
+> **Nota**: Por padrao o `searxngUrl` deve apontar para loopback (`localhost`, `127.0.0.1` ou `[::1]`). Para usar um SearXNG em outro host (ex.: rede interna), inclua o hostname desse servidor em `allowedDomains` (mesmas regras de subdominio que para navegacao).
+
+### Busca inicial (sem URL)
+
+Quando voce nao fornece uma URL, o agent busca no SearXNG automaticamente e usa o primeiro resultado como ponto de partida:
+
+```typescript
+const agent = new Auspex({
+  llmApiKey: process.env.LLM_API_KEY!,
+  searxngUrl: "http://localhost:8080",
+});
+
+// Sem URL — o agent busca primeiro e depois navega
+const result = await agent.run({
+  prompt: "Encontre o preco do iPhone 15 no site da Apple",
+});
+```
+
+O agent ira:
+1. Buscar "preco do iPhone 15 site da Apple" no SearXNG
+2. Usar o primeiro resultado como URL inicial
+3. Navegar e executar a tarefa normalmente
+
+### Acao `search` durante o loop
+
+O agent tambem pode usar a acao `search` durante o loop para encontrar informacoes adicionais:
+
+```typescript
+const result = await agent.run({
+  url: "https://shop.example.com",
+  prompt: "Compare o preco deste produto com os concorrentes",
+});
+```
+
+O agent pode:
+1. Ler o preco na pagina atual
+2. Usar `{"type":"search","query":"produto X preco concorrentes"}` para buscar
+3. Analisar os resultados da busca
+4. Retornar a comparacao
+
+### Resultados de busca no snapshot
+
+Quando uma busca e realizada, os resultados sao incluidos no proximo snapshot:
+
+```
+### Search Results (5)
+1. iPhone 15 - Apple
+   https://www.apple.com/iphone-15/
+   O novo iPhone 15 apresenta design renovado...
+   Score: 0.95
+
+2. iPhone 15 - Loja Exemplo
+   https://loja.example.com/iphone-15
+   iPhone 15 a partir de R$ 5.999...
+   Score: 0.87
+...
+```
+
+### Configuracao do SearXNG
+
+Para rodar o SearXNG localmente com Docker:
+
+```bash
+docker run -d --name searxng -p 8080:8080 \
+  -e BASE_URL=http://localhost:8080 \
+  quay.io/searxng/searxng:latest
+```
+
+Ou via Docker Compose:
+
+```yaml
+services:
+  searxng:
+    image: quay.io/searxng/searxng:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - BASE_URL=http://localhost:8080
+```
+
+### Seguranca
+
+- **Validacao de URL**: loopback por padrao; hosts remotos apenas se o hostname do SearXNG estiver em `allowedDomains` (e respeitando `blockedDomains`)
+- **Sanitizacao de query**: maximo 500 caracteres, sem caracteres perigosos
+- **Timeout**: 5 segundos para requisicoes ao SearXNG
+- **Rate limiting**: configure rate limiting no proprio SearXNG se necessario
 
 ---
 
@@ -895,6 +1023,9 @@ LLM_API_KEY=sk-your-key-here
 # Opcional — trocar provider
 # LLM_BASE_URL=https://api.groq.com/openai/v1
 # LLM_MODEL=llama-3.3-70b-versatile
+
+# Opcional — habilita web search com SearXNG
+# SEARXNG_URL=http://localhost:8080
 ```
 
 > O framework em si recebe tudo via `AgentConfig` no construtor — as variaveis de ambiente sao usadas apenas pelo exemplo.
@@ -926,6 +1057,10 @@ import {
   type BrowserPoolOptions,
   UrlValidationError,
   ActionValidationError,
+  SearXNGClient,
+  type SearchResult,
+  type SearXNGResponse,
+  type SearXNGClientOptions,
 } from "auspex";
 ```
 

@@ -8,6 +8,7 @@ import { LLMClient } from "../llm/client.js";
 import { parseAndValidateAction, formatActionForHistory } from "./actions.js";
 import { generateReport } from "./report.js";
 import { warnIfNotVisionModel, isVisionModel } from "../llm/vision-models.js";
+import type { SearXNGClient } from "../search/searxng-client.js";
 
 // Sliding window of history sent to LLM.
 // Keeps the first item (initial context) + the N most recent.
@@ -87,6 +88,13 @@ export interface StaticLoopResult {
   usage: LLMUsage;
 }
 
+export interface StaticLoopOptions {
+  /** Results from pre-run SearXNG search (when run started without url) — included in the LLM snapshot. */
+  initialSearchResults?: PageSnapshot["searchResults"];
+  /** When true, system prompt lists the search action (must match configured SearXNG). */
+  searchAvailable?: boolean;
+}
+
 export async function runStaticLoop(
   snapshot: PageSnapshot,
   url: string,
@@ -94,6 +102,7 @@ export async function runStaticLoop(
   config: ValidatedConfig,
   signal?: AbortSignal,
   schemaDescription?: string,
+  staticLoopOptions?: StaticLoopOptions,
 ): Promise<StaticLoopResult> {
   const emptyUsage: LLMUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
 
@@ -120,9 +129,24 @@ export async function runStaticLoop(
 
   const usage: LLMUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
 
+  const snapshotForLlm: PageSnapshot =
+    staticLoopOptions?.initialSearchResults && staticLoopOptions.initialSearchResults.length > 0
+      ? { ...snapshot, searchResults: staticLoopOptions.initialSearchResults }
+      : snapshot;
+
+  const searchAvailable = !!staticLoopOptions?.searchAvailable;
+
   let raw: unknown;
   try {
-    const response = await llm.decideAction(prompt, formatSnapshot(snapshot), [], schemaDescription);
+    const response = await llm.decideAction(
+      prompt,
+      formatSnapshot(snapshotForLlm),
+      [],
+      schemaDescription,
+      undefined,
+      undefined,
+      searchAvailable,
+    );
     raw = response.data;
     usage.promptTokens     = response.usage.promptTokens;
     usage.completionTokens = response.usage.completionTokens;
@@ -161,6 +185,10 @@ export interface LoopOptions {
   signal?: AbortSignal;
   /** JSON Schema description string injected into the LLM prompt for structured extraction */
   schemaDescription?: string;
+  /** SearXNG client for web search functionality */
+  searxngClient?: SearXNGClient;
+  /** Initial search results from pre-run search (when url was not provided) */
+  initialSearchResults?: PageSnapshot["searchResults"];
   onAction?: (action: AgentAction, iteration: number) => void;
   onActionResult?: (iteration: number, ok: boolean, error?: string) => void;
   onInvalidAction?: (iteration: number, error: string) => void;
@@ -216,6 +244,10 @@ export async function runAgentLoop(
   let useVision = false;
   let consecutiveFailures = 0;
 
+  // ── Search results ────────────────────────────────────────────────────
+  // Pending search results to include in the next snapshot
+  let pendingSearchResults: PageSnapshot["searchResults"] = loopOptions.initialSearchResults;
+
   if (config.vision) {
     warnIfNotVisionModel(config.model);
   }
@@ -240,6 +272,13 @@ export async function runAgentLoop(
     }
 
     const snapshot = await takeSnapshot(page);
+
+    // Include pending search results in the snapshot
+    if (pendingSearchResults && pendingSearchResults.length > 0) {
+      snapshot.searchResults = pendingSearchResults;
+      pendingSearchResults = undefined; // Clear after including
+    }
+
     loopOptions.onIteration?.(i, snapshot);
 
     // ── Blocked page detection (CAPTCHA, consent, rate-limit) ────────
@@ -260,7 +299,8 @@ export async function runAgentLoop(
 
     let raw: unknown;
     try {
-      const response = await llm.decideAction(prompt, formatted, windowedHistory(history), loopOptions.schemaDescription, screenshot, visionAvailable);
+      const searchAvailable = !!loopOptions.searxngClient;
+      const response = await llm.decideAction(prompt, formatted, windowedHistory(history), loopOptions.schemaDescription, screenshot, visionAvailable, searchAvailable);
       raw = response.data;
       usage.promptTokens     += response.usage.promptTokens;
       usage.completionTokens += response.usage.completionTokens;
@@ -319,6 +359,31 @@ export async function runAgentLoop(
       return buildResult("done", "playwright", action.result, actions, usage, peakRssKb, startTime, url, prompt);
     }
 
+    // ── Search action (special handling) ────────────────────────────────
+    if (action.type === "search") {
+      if (!loopOptions.searxngClient) {
+        history.push(`[${i}] ERROR: Web search not available. searxngUrl not configured.`);
+        loopOptions.onActionResult?.(i, false, "Web search not available");
+        consecutiveFailures++;
+      } else {
+        try {
+          const results = await loopOptions.searxngClient.search(action.query, 5);
+          pendingSearchResults = results;
+          history.push(`[${i}] search "${action.query}" -> ${results.length} results found`);
+          loopOptions.onActionResult?.(i, true);
+          consecutiveFailures = 0;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          history.push(`[${i}] ERROR executing search: ${msg}`);
+          loopOptions.onActionResult?.(i, false, msg);
+          consecutiveFailures++;
+        }
+      }
+      // Search doesn't require page wait, continue to next iteration
+      continue;
+    }
+
+    // ── All other actions (execute on page) ─────────────────────────────
     try {
       await executeAction(page, action, urlOptions);
       history.push(formatActionForHistory(action, i) + " -> OK");

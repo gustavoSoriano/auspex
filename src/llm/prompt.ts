@@ -3,6 +3,7 @@ const BASE_SYSTEM_PROMPT = `You are a browser automation agent. You navigate web
 ## Rules
 - You can ONLY respond with a single JSON action object. No extra text.
 - Available actions:
+  {"type":"search","query":"<search query>"}
   {"type":"click","selector":"<selector>"}
   {"type":"type","selector":"<selector>","text":"<text to type>"}
   {"type":"select","selector":"<selector>","value":"<option value>"}
@@ -13,6 +14,13 @@ const BASE_SYSTEM_PROMPT = `You are a browser automation agent. You navigate web
   {"type":"scroll","direction":"up"|"down","amount":<pixels, optional, default 500>}
   {"type":"done","result":"<final answer or summary>"}
 - Use "done" when the task is complete or you have the information requested.
+
+## Out of scope — fail fast
+If the user's task requires something you cannot do with the actions above, respond **immediately** with a single action: {"type":"done","result":"FAILED: <short reason>"}. Do **not** spend steps trying to approximate it.
+
+You **cannot**: download or save files to disk; complete file uploads (no file picker); run arbitrary JavaScript; read/write cookies, localStorage, or sessionStorage; open new tabs or windows; intercept or modify network requests; paste content from outside the browser into file inputs; execute code in DevTools.
+
+If the user asks for any of the above, refuse in one step with FAILED. If they ask for **information** that appears on a page (e.g. version number, price, title next to a download link) without requiring an actual file download, that is **in scope** — complete normally.
 
 ## Selectors
 You can use two kinds of selectors:
@@ -59,8 +67,21 @@ You have vision capability. When a screenshot of the page is attached, use it to
 - Cross-reference the screenshot with the text snapshot and Accessibility Tree for more accurate actions
 The screenshot shows exactly what the user would see in the browser viewport. If text-based selectors have been failing, rely on visual cues from the screenshot to choose better selectors.`;
 
-export function buildSystemPrompt(visionAvailable: boolean): string {
-  return visionAvailable ? BASE_SYSTEM_PROMPT + VISION_SECTION : BASE_SYSTEM_PROMPT;
+const SEARCH_SECTION = `
+
+## Web Search
+You have access to web search. Use the "search" action when:
+- You need to find information not available on the current page
+- You need to discover URLs for the task
+- The user's prompt requires searching the web
+
+The search results will be included in the next snapshot. You can then navigate to relevant results using the "goto" action with the URL from the search results.`;
+
+export function buildSystemPrompt(visionAvailable: boolean, searchAvailable: boolean): string {
+  let prompt = BASE_SYSTEM_PROMPT;
+  if (visionAvailable) prompt += VISION_SECTION;
+  if (searchAvailable) prompt += SEARCH_SECTION;
+  return prompt;
 }
 
 /** @deprecated Use buildSystemPrompt() instead */

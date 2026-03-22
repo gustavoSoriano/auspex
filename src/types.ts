@@ -3,6 +3,7 @@ import type { ZodType } from "zod";
 // ─── Agent Actions ────────────────────────────────────────────────────────────
 
 export type AgentAction =
+  | { type: "search"; query: string }
   | { type: "click"; selector: string }
   | { type: "type"; selector: string; text: string }
   | { type: "select"; selector: string; value: string }
@@ -74,12 +75,14 @@ export interface AgentConfig {
   vision?: boolean;
   /** JPEG quality for screenshots (1-100). Lower = smaller payload, fewer tokens. Default: 75 */
   screenshotQuality?: number;
+  /** SearXNG base URL for web search. If not set, uses SEARXNG_URL. Must be loopback (localhost / 127.0.0.1 / ::1) unless the host is covered by allowedDomains. */
+  searxngUrl?: string;
 }
 
 // ─── Run Options (per-execution overrides) ────────────────────────────────────
 
 export interface RunOptions {
-  url: string;
+  url?: string;
   prompt: string;
   /** Override maxIterations for this run */
   maxIterations?: number;
@@ -93,6 +96,11 @@ export interface RunOptions {
   schema?: ZodType;
   /** Override vision auto-fallback setting for this run */
   vision?: boolean;
+  /**
+   * Override SearXNG base URL for this run only (takes precedence over `AgentConfig.searxngUrl` / `SEARXNG_URL`).
+   * Use with `prompt` and no `url` to enable initial web search without configuring the agent constructor.
+   */
+  searxngUrl?: string;
 }
 
 // ─── Action Record ────────────────────────────────────────────────────────────
@@ -145,6 +153,13 @@ export interface AgentResult {
 
 // ─── Page Snapshot ────────────────────────────────────────────────────────────
 
+export interface SearchResult {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+}
+
 export interface PageSnapshot {
   url: string;
   title: string;
@@ -155,6 +170,8 @@ export interface PageSnapshot {
   ariaTree?: string;
   /** Base64-encoded JPEG screenshot of the viewport (only present when vision is enabled) */
   screenshot?: string;
+  /** Search results from SearXNG (only present after a search action) */
+  searchResults?: SearchResult[];
 }
 
 export interface SnapshotLink {

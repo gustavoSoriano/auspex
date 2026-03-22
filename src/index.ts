@@ -44,3 +44,7 @@ export type {
 // ── Security ─────────────────────────────────────────────────────────────────
 export { UrlValidationError } from "./security/url-validator.js";
 export { ActionValidationError } from "./security/action-validator.js";
+
+// ── Web search (SearXNG) ─────────────────────────────────────────────────────
+export { SearXNGClient } from "./search/index.js";
+export type { SearchResult, SearXNGResponse, SearXNGClientOptions } from "./search/index.js";

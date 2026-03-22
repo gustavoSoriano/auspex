@@ -55,6 +55,7 @@ export class LLMClient {
     schemaDescription?: string,
     screenshot?: string,
     visionAvailable?: boolean,
+    searchAvailable?: boolean,
   ): Promise<LLMResponse> {
     let lastError: unknown;
 
@@ -73,7 +74,7 @@ export class LLMClient {
           frequency_penalty: this.params.frequencyPenalty,
           presence_penalty: this.params.presencePenalty,
           messages: [
-            { role: "system", content: buildSystemPrompt(!!visionAvailable) },
+            { role: "system", content: buildSystemPrompt(!!visionAvailable, !!searchAvailable) },
             { role: "user", content: userContent },
           ],
         };
