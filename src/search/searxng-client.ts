@@ -108,7 +108,7 @@ export class SearXNGClient {
         searchParams: {
           q: sanitizedQuery,
           format: "json",
-          engines: "google,bing,duckduckgo",
+          engines: "google,bing,duckduckgo,brave",
         },
         timeout: {
           request: this.timeout,
