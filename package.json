@@ -21,6 +21,7 @@
     "example": "tsx examples/basic.ts",
     "example:websearch": "tsx examples/websearch.ts",
     "example:scraper": "tsx examples/scraper.ts",
+    "example:macro": "tsx examples/macro.ts",
     "install:browser": "playwright install chromium",
     "test": "vitest run",
     "test:watch": "vitest"

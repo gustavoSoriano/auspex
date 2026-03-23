@@ -18,7 +18,27 @@ export type {
   ProxyConfig,
   CookieParam,
   AuspexEvents,
+  ReplayableAction,
 } from "./types.js";
+
+// ── Macro (record & replay) ──────────────────────────────────────────────────
+export {
+  buildMacro,
+  macroToJsonString,
+  parseMacroJson,
+  replayMacro,
+  replayMacroWithBrowser,
+  auspexMacroSchema,
+  macroStepSchema,
+  MacroParseError,
+} from "./macro/index.js";
+export type {
+  AuspexMacro,
+  MacroReplayOptions,
+  MacroReplayLaunchOptions,
+  MacroReplayResult,
+  MacroReplayStatus,
+} from "./macro/index.js";
 
 // ── Browser Pool ─────────────────────────────────────────────────────────────
 export { BrowserPool } from "./browser/pool.js";

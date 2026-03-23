@@ -13,6 +13,7 @@ import { generateReport } from "./report.js";
 import { RunLogger } from "./logger.js";
 import type { BrowserPool } from "../browser/pool.js";
 import { SearXNGClient } from "../search/searxng-client.js";
+import { buildMacro } from "../macro/build.js";
 
 export class Auspex extends EventEmitter {
   private config: ValidatedConfig;
@@ -83,6 +84,7 @@ export class Auspex extends EventEmitter {
   async run(options: RunOptions): Promise<AgentResult> {
     const validated = runOptionsSchema.parse(options);
     let { url, prompt } = validated;
+    const includeMacro = validated.includeMacro !== false;
     const signal = options.signal;
     const schema = options.schema as ZodType | undefined;
 
@@ -182,6 +184,10 @@ export class Auspex extends EventEmitter {
           staticLoopUsage = staticLoop.usage;
           if (staticLoop.result) {
             const finalResult = this.applySchema(staticLoop.result, schema, validUrl, prompt);
+            if (includeMacro && finalResult.status === "done") {
+              const m = buildMacro(finalResult, validUrl);
+              if (m) finalResult.macro = m;
+            }
             this.emit("done", finalResult);
             return finalResult;
           }
@@ -274,6 +280,10 @@ export class Auspex extends EventEmitter {
       }
 
       const finalResult = this.applySchema(result, schema, validUrl, prompt);
+      if (includeMacro && finalResult.status === "done") {
+        const m = buildMacro(finalResult, validUrl);
+        if (m) finalResult.macro = m;
+      }
       logger?.logResult(finalResult);
       this.emit("done", finalResult);
       return finalResult;

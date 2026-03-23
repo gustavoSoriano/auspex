@@ -15,6 +15,7 @@ Além disso, é compatível com Web Search através de SearXNG
 - [AgentConfig — Configuracao completa](#agentconfig--configuracao-completa)
 - [RunOptions](#runoptions)
 - [AgentResult — Retorno da execucao](#agentresult--retorno-da-execucao)
+- [Macro e replay](#macro-e-replay)
 - [Relatorio de Execucao](#relatorio-de-execucao)
 - [Parametros da LLM](#parametros-da-llm)
 - [Providers de LLM compativeis](#providers-de-llm-compativeis)
@@ -237,6 +238,7 @@ Opcoes passadas para `agent.run(options)`:
 | `actionDelayMs` | `number` | Nao | Override de actionDelayMs para este run |
 | `signal` | `AbortSignal` | Nao | AbortSignal para cancelar o run |
 | `schema` | `ZodType<T>` | Nao | Schema Zod: retorno tipado em `data` (T \| null) |
+| `includeMacro` | `boolean` | Nao | Se `false`, omite `macro` no resultado em runs com sucesso. Default: `true` |
 | `vision` | `boolean` | Nao | Override do fallback com screenshot |
 | `searxngUrl` | `string` | Nao | Override do SearXNG **neste run** (sobrescreve `AgentConfig` / `SEARXNG_URL`) |
 
@@ -275,6 +277,7 @@ interface AgentResult {
   usage: LLMUsage;                // consumo de tokens da LLM
   memory: MemoryUsage;            // consumo de memoria
   error?: string;                 // mensagem de erro (se houver)
+  macro?: AuspexMacro;            // receita JSON para replay (so em status "done", se includeMacro nao for false)
 }
 ```
 
@@ -326,6 +329,46 @@ interface MemoryUsage {
   nodeHeapUsedMb: number;    // heap usado pelo Node.js no fim da execucao (MB)
 }
 ```
+
+---
+
+## Macro e replay
+
+Em runs com **sucesso** (`status === "done"`), o resultado pode incluir `macro`: um JSON canónico com `version`, `startUrl`, `sourceTier`, `steps` (ações sem o terminal `done`) e opcionalmente `capturedResult` (texto do `done` original). No tier **http** com sucesso imediato, `steps` fica vazio — o replay só repete a navegação inicial.
+
+Para **serializar** (por exemplo para gravar em ficheiro ou base de dados):
+
+```typescript
+import { macroToJsonString, parseMacroJson } from "auspex";
+
+const json = macroToJsonString(result.macro!);
+const macro = parseMacroJson(json);
+```
+
+Para **reexecutar** sem montar browser à mão, use **`replayMacroWithBrowser(macro, options)`**: faz `launchStealthBrowser`, contexto alinhado ao agent (UA, viewport, locale, stealth init), `replayMacro`, e fecha tudo. Suporta `proxy`, `cookies`, `extraHTTPHeaders`, `browserLaunchOptions` (ex.: `{ headless: false }`).
+
+```typescript
+import { replayMacroWithBrowser } from "auspex";
+
+const out = await replayMacroWithBrowser(macro, {
+  actionDelayMs: 500,
+  gotoTimeoutMs: 15_000,
+  searxngClient, // obrigatorio se houver passos search
+});
+// out.status === "ok" | "error"
+```
+
+Se já tiver uma **`Page`** (mesmo browser que o agent ou outro fluxo), use `replayMacro(page, macro, options)` diretamente. Respeite `allowedDomains` / `blockedDomains` como no agent. Se `steps` contiver `search`, passe `searxngClient` (a chamada à API é repetida; o resultado não é injetado na página — o mesmo comportamento lateral que no agente).
+
+Fidelidade **best-effort**: seletores e timing podem falhar se o site mudar. Passos `search` no replay não alteram o DOM.
+
+Com `LLM_API_KEY` no `.env`:
+
+```bash
+npm run example:macro
+```
+
+Veja [`examples/macro.ts`](examples/macro.ts) — um `run` que grava a macro e em seguida executa `replayMacroWithBrowser` num browser novo.
 
 ---
 
@@ -1054,6 +1097,7 @@ import {
   type ProxyConfig,
   type CookieParam,
   type AuspexEvents,
+  type ReplayableAction,
   type BrowserPoolOptions,
   UrlValidationError,
   ActionValidationError,
@@ -1061,6 +1105,17 @@ import {
   type SearchResult,
   type SearXNGResponse,
   type SearXNGClientOptions,
+  buildMacro,
+  macroToJsonString,
+  parseMacroJson,
+  replayMacro,
+  replayMacroWithBrowser,
+  MacroParseError,
+  type AuspexMacro,
+  type MacroReplayOptions,
+  type MacroReplayLaunchOptions,
+  type MacroReplayResult,
+  type MacroReplayStatus,
 } from "auspex";
 ```
 

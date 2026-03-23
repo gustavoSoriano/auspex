@@ -60,6 +60,8 @@ export const runOptionsSchema = z.object({
   actionDelayMs: z.number().int().min(0).optional(),
   schema: z.custom<ZodType>().optional(),
   vision: z.boolean().optional(),
+  /** When false, successful runs omit `macro` on the result. Default: true */
+  includeMacro: z.boolean().optional(),
   searxngUrl: z.string().url().optional(),
 }).refine(
   (data) => data.url || data.searxngUrl || process.env.SEARXNG_URL,

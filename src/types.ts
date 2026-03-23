@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import type { AuspexMacro } from "./macro/schema.js";
 
 // ─── Agent Actions ────────────────────────────────────────────────────────────
 
@@ -13,6 +14,9 @@ export type AgentAction =
   | { type: "wait"; ms: number }
   | { type: "scroll"; direction: "up" | "down"; amount?: number }
   | { type: "done"; result: string };
+
+/** Browser/API steps that can be replayed (excludes terminal `done`). */
+export type ReplayableAction = Exclude<AgentAction, { type: "done" }>;
 
 // ─── Proxy ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +98,8 @@ export interface RunOptions {
   signal?: AbortSignal;
   /** Zod schema for structured data extraction. When provided, the agent returns validated, typed data. */
   schema?: ZodType;
+  /** When false, successful runs omit `macro` on the result. Default: true */
+  includeMacro?: boolean;
   /** Override vision auto-fallback setting for this run */
   vision?: boolean;
   /**
@@ -149,6 +155,8 @@ export interface AgentResult {
   usage: LLMUsage;
   memory: MemoryUsage;
   error?: string;
+  /** Canonical replay recipe when `status === "done"` and `includeMacro` is not false */
+  macro?: AuspexMacro;
 }
 
 // ─── Page Snapshot ────────────────────────────────────────────────────────────
