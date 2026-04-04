@@ -45,7 +45,9 @@ export interface CookieParam {
 // ─── Agent Config ─────────────────────────────────────────────────────────────
 
 export interface AgentConfig {
-  llmApiKey: string;
+  /** LLM provider: "openai" (default, cloud API) or "agentium" (local, free). */
+  provider?: "openai" | "agentium";
+  llmApiKey?: string;
   llmBaseUrl?: string;
   port?: number;
   model?: string;
@@ -81,6 +83,14 @@ export interface AgentConfig {
   screenshotQuality?: number;
   /** SearXNG base URL for web search (operator-configured; not restricted by allowedDomains). If not set, uses SEARXNG_URL. */
   searxngUrl?: string;
+  /** Path to GGUF model file (provider: "agentium" only). If omitted, auto-downloads Qwen2.5-7B to ~/.auspex/models/ */
+  modelPath?: string;
+  /** Directory for auto-downloaded models (provider: "agentium" only). Default: ~/.auspex/models/ */
+  modelDir?: string;
+  /** GPU layers for local inference (provider: "agentium" only). Default: "auto" */
+  gpuLayers?: number | "auto";
+  /** Context window size for local inference (provider: "agentium" only). Default: "auto" */
+  contextSize?: number | "auto";
 }
 
 // ─── Run Options (per-execution overrides) ────────────────────────────────────

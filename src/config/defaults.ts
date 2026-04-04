@@ -1,4 +1,5 @@
 export const DEFAULTS = {
+  provider: "openai" as const,
   model: "gpt-4o",
   temperature: 1,
   maxIterations: 30,

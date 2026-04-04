@@ -4,7 +4,7 @@
 https://www.npmjs.com/package/auspex
 
 Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e um **prompt em linguagem natural** — o agent decide sozinho se basta uma requisicao HTTP ou se precisa abrir o Playwright, navega, clica, preenche formularios e retorna o resultado com um relatorio completo.
-Além disso, é compatível com Web Search através de SearXNG
+Além disso, é compatível com Web Search através de SearXNG e funciona **100% local e gratis** via Agentium (sem API key).
 ---
 
 ## Indice
@@ -19,6 +19,7 @@ Além disso, é compatível com Web Search através de SearXNG
 - [Relatorio de Execucao](#relatorio-de-execucao)
 - [Parametros da LLM](#parametros-da-llm)
 - [Providers de LLM compativeis](#providers-de-llm-compativeis)
+- [Provider Agentium (100% local e gratis)](#provider-agentium-100-local-e-gratis)
 - [Eventos](#eventos)
 - [Browser Pool](#browser-pool)
 - [Acoes do Agent](#acoes-do-agent)
@@ -152,8 +153,9 @@ Todas as opcoes que voce pode passar ao `new Auspex(config)`:
 
 ```typescript
 new Auspex({
-  // ──── Obrigatorio ────────────────────────────────
-  llmApiKey: "sk-...",             // API key do provider LLM
+  // ──── Provider ──────────────────────────────────────
+  provider: "openai",              // "openai" (cloud) ou "agentium" (local/gratis)
+  llmApiKey: "sk-...",             // API key (obrigatorio quando provider="openai")
 
   // ──── LLM ────────────────────────────────────────
   llmBaseUrl: "https://...",       // URL base do provider (default: OpenAI)
@@ -198,7 +200,8 @@ new Auspex({
 
 | Parametro | Tipo | Obrigatorio | Default | Descricao |
 |-----------|------|:-----------:|---------|-----------|
-| `llmApiKey` | `string` | Sim | — | API key do provider LLM |
+| `provider` | `"openai" \| "agentium"` | Nao | `"openai"` | Provider LLM: `"openai"` (cloud API) ou `"agentium"` (local, gratis) |
+| `llmApiKey` | `string` | Sim\* | — | API key do provider LLM (\*obrigatorio quando provider="openai") |
 | `llmBaseUrl` | `string` | Nao | `https://api.openai.com/v1` | URL base do provider |
 | `model` | `string` | Nao | `"gpt-4o"` | Modelo a usar |
 | `temperature` | `number` | Nao | `1` | Criatividade (0 = deterministico, 2 = maximo) |
@@ -222,6 +225,10 @@ new Auspex({
 | `vision` | `boolean` | Nao | `false` | Fallback com screenshot apos falhas (modelo vision) |
 | `screenshotQuality` | `number` | Nao | `75` | Qualidade JPEG 1-100 para screenshots |
 | `searxngUrl` | `string` | Nao | — | Base URL do SearXNG (`http`/`https`; nao depende de `allowedDomains`) |
+| `modelPath` | `string` | Nao | — | Path para modelo `.gguf` (provider="agentium" apenas) |
+| `modelDir` | `string` | Nao | `~/.auspex/models/` | Diretorio para modelos auto-baixados (provider="agentium") |
+| `gpuLayers` | `number \| "auto"` | Nao | `"auto"` | Camadas GPU para inferencia local |
+| `contextSize` | `number \| "auto"` | Nao | `"auto"` | Tamanho do contexto para inferencia local |
 
 ---
 
@@ -546,6 +553,97 @@ const agent = new Auspex({
 
 ---
 
+## Provider Agentium (100% local e gratis)
+
+O auspex suporta o [Agentium](https://www.npmjs.com/package/agentium) como provider de LLM, permitindo rodar o agent **inteiramente local** sem API key, sem custo e sem internet para inferencia. O modelo roda na sua maquina via `node-llama-cpp` (bindings C++ do llama.cpp).
+
+### Quick Start local
+
+```bash
+npm install auspex agentium
+npx playwright install chromium
+```
+
+```typescript
+import { Auspex } from "auspex";
+
+const agent = new Auspex({
+  provider: "agentium",
+  temperature: 0,
+  timeoutMs: 180_000,
+});
+
+const result = await agent.run({
+  url: "https://example.com",
+  prompt: "Qual o titulo desta pagina?",
+});
+
+console.log(result.data);
+await agent.close();
+```
+
+### Auto-download de modelos
+
+Na primeira execucao com `provider: "agentium"` (sem `modelPath`), o framework baixa automaticamente o modelo padrao (**Qwen2.5-7B-Instruct-Q4_K_M**, ~4.7GB) do HuggingFace para `~/.auspex/models/`. Nas execucoes seguintes o modelo ja esta no disco e carrega em poucos segundos.
+
+### Configuracao do provider Agentium
+
+```typescript
+new Auspex({
+  provider: "agentium",
+
+  // Modelo (opcional) — path para arquivo .gguf
+  // Se omitido, usa ~/.auspex/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
+  modelPath: "./meu-modelo.gguf",
+
+  // Diretorio para modelos baixados (default: ~/.auspex/models/)
+  modelDir: "~/.auspex/models",
+
+  // GPU layers (default: "auto" — detecta automaticamente)
+  gpuLayers: "auto",    // ou numero (ex: 33 para offload total)
+  contextSize: "auto",  // ou numero (ex: 4096)
+
+  // Parametros de geracao
+  temperature: 0,
+  maxTokens: 2048,
+});
+```
+
+### Parametros do Agentium
+
+| Parametro | Tipo | Obrigatorio | Default | Descricao |
+|-----------|------|:-----------:|---------|-----------|
+| `provider` | `"agentium"` | Sim | — | Ativa o provider local |
+| `modelPath` | `string` | Nao | `~/.auspex/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | Path para arquivo .gguf |
+| `modelDir` | `string` | Nao | `~/.auspex/models/` | Diretorio para auto-download |
+| `gpuLayers` | `number \| "auto"` | Nao | `"auto"` | Camadas GPU para inferencia |
+| `contextSize` | `number \| "auto"` | Nao | `"auto"` | Tamanho da janela de contexto |
+
+> **Nota**: quando `provider: "agentium"`, os campos `llmApiKey`, `llmBaseUrl` e `model` sao ignorados.
+
+### JSON garantido por grammar
+
+O provider Agentium usa grammar-constrained generation (via node-llama-cpp) para garantir que o modelo sempre retorne JSON valido — equivalente ao `response_format: { type: "json_object" }` do OpenAI. Isso elimina erros de parse mesmo em modelos menores.
+
+### Modelos recomendados
+
+| Modelo | Tamanho | RAM minima | Download |
+|--------|---------|------------|----------|
+| **Qwen2.5-7B-Instruct-Q4_K_M** (default) | ~4.7GB | 8GB | Auto |
+| Qwen2.5-3B-Instruct-Q4_K_M | ~2GB | 4GB | Manual (`modelPath`) |
+| Qwen2.5-14B-Instruct-Q4_K_M | ~8.5GB | 16GB | Manual (`modelPath`) |
+
+> Para usar outros modelos, baixe o arquivo `.gguf` e passe o path em `modelPath`.
+
+### Limitacoes do provider Agentium
+
+- **Sem vision**: screenshots nao sao suportados com modelos locais (o campo `vision` e ignorado)
+- **Performance**: depende do hardware — sem GPU, modelos 7B podem ser lentos (~5-15s por acao)
+- **Qualidade**: modelos locais menores podem ter menor acuracia que GPT-4o para tarefas complexas
+- **First run**: o download inicial do modelo pode levar varios minutos (~4.7GB)
+
+---
+
 ## Acoes do Agent
 
 O LLM so pode executar acoes de uma **whitelist rigorosa**. Qualquer coisa fora disso eh rejeitada.
@@ -867,6 +965,7 @@ console.log(`Custo estimado: $${(promptCost + completionCost).toFixed(4)}`);
 - **`gpt-4o`**: melhor acertividade para tarefas complexas com muitas etapas
 - **`gpt-4o-mini`**: bom custo-beneficio para tarefas simples (extrair titulo, clicar em link)
 - **`llama-3.3-70b`** (via Groq): rapido e barato para tarefas diretas
+- **`agentium`** (local): 100% gratis, sem API key — ideal para testes e tarefas simples. Use `provider: "agentium"`
 
 ### 3. Ajuste `maxIterations` para tarefas longas
 
@@ -927,7 +1026,8 @@ Criar um `Auspex` uma vez e chamar `run()` multiplas vezes eh mais eficiente do 
 - **Dependencia de selectors CSS**: a qualidade da automacao depende da capacidade do LLM de identificar selectors corretos a partir do snapshot textual.
 - **Snapshot limitado**: captura ate 25 links, 5 formularios e 3500 chars de texto por pagina. Paginas muito grandes podem ter elementos nao capturados.
 - **Vision**: ao usar `vision: true`, o modelo deve suportar entrada de imagem (ex.: gpt-4o, gpt-4o-mini). Screenshot so eh enviado apos falhas consecutivas (fallback).
-- **JSON mode obrigatorio**: o provider LLM deve suportar `response_format: { type: "json_object" }` (exceto em chamadas com screenshot, quando pode ser omitido).
+- **JSON mode obrigatorio**: o provider LLM deve suportar `response_format: { type: "json_object" }` (exceto em chamadas com screenshot, quando pode ser omitido). Com `provider: "agentium"`, JSON e garantido por grammar-constrained generation.
+- **Agentium (provider local)**: sem suporte a vision (screenshots ignorados). Performance depende do hardware. Modelos locais menores podem ter menor acuracia que GPT-4o.
 
 ---
 
@@ -973,17 +1073,21 @@ Exemplo: `npx tsx examples/map.ts`
 
 ```
 src/
-  index.ts                  # Exports publicos (Auspex, tipos, erros)
+  index.ts                  # Exports publicos (Auspex, tipos, erros, adapters)
   types.ts                  # Tipos: AgentConfig, AgentResult, AgentAction, etc
   config/
-    defaults.ts             # Valores default (model, temperature, limites)
+    defaults.ts             # Valores default (provider, model, temperature, limites)
     schema.ts               # Validacao Zod de toda config
   browser/
     snapshot.ts             # Captura texto, links e forms (Playwright + Cheerio)
     executor.ts             # Executa acoes validadas no browser
   llm/
-    client.ts               # Client LLM (SDK OpenAI, suporta qualquer provider)
+    types.ts                # Interface ILLMAdapter, tipos compartilhados
+    client.ts               # Facade — seleciona adapter por provider
+    adapter-openai.ts       # OpenAI adapter (SDK OpenAI, qualquer provider cloud)
+    adapter-agentium.ts     # Agentium adapter (local, grammar-constrained, auto-download)
     prompt.ts               # System prompt com regras de seguranca
+    vision-models.ts        # Whitelist de modelos com suporte a vision
   agent/
     agent.ts                # Auspex — classe principal / API publica
     loop.ts                 # Core loop: snapshot -> LLM -> validar -> executar
@@ -1060,18 +1164,22 @@ agent.run(url, prompt)
 O exemplo (`examples/basic.ts`) usa `dotenv` para carregar variaveis do `.env`:
 
 ```bash
-# Obrigatorio
+# Obrigatorio (provider="openai")
 LLM_API_KEY=sk-your-key-here
 
-# Opcional — trocar provider
+# Opcional — trocar provider cloud
 # LLM_BASE_URL=https://api.groq.com/openai/v1
 # LLM_MODEL=llama-3.3-70b-versatile
 
 # Opcional — habilita web search com SearXNG
 # SEARXNG_URL=http://localhost:8080
+
+# Opcional — provider local (sem API key)
+# provider=agentium
+# modelPath=~/.auspex/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf
 ```
 
-> O framework em si recebe tudo via `AgentConfig` no construtor — as variaveis de ambiente sao usadas apenas pelo exemplo.
+> O framework em si recebe tudo via `AgentConfig` no construtor — as variaveis de ambiente sao usadas apenas pelo exemplo. Para rodar 100% local, use `provider: "agentium"` no config (nenhuma variavel de ambiente necessaria).
 
 ---
 
@@ -1105,6 +1213,14 @@ import {
   type SearchResult,
   type SearXNGResponse,
   type SearXNGClientOptions,
+  // ── LLM Adapters ──
+  OpenAIAdapter,
+  AgentiumAdapter,
+  type ILLMAdapter,
+  type LLMProvider,
+  type LLMRequestParams,
+  type LLMResponse,
+  // ── Macro ──
   buildMacro,
   macroToJsonString,
   parseMacroJson,

@@ -121,18 +121,21 @@ export async function runStaticLoop(
     maxIterations: 1, // Static loop is single-shot
   };
 
-  const llm = new LLMClient(
-    config.llmApiKey,
-    config.model,
-    {
-      temperature: config.temperature,
-      maxTokens: config.maxTokens,
-      topP: config.topP,
-      frequencyPenalty: config.frequencyPenalty,
-      presencePenalty: config.presencePenalty,
-    },
-    config.llmBaseUrl,
-  );
+  const llm = new LLMClient({
+    provider: config.provider,
+    apiKey: config.llmApiKey,
+    baseUrl: config.llmBaseUrl,
+    model: config.model,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+    topP: config.topP,
+    frequencyPenalty: config.frequencyPenalty,
+    presencePenalty: config.presencePenalty,
+    modelPath: config.modelPath,
+    modelDir: config.modelDir,
+    gpuLayers: config.gpuLayers,
+    contextSize: config.contextSize,
+  });
 
   const usage: LLMUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, calls: 0 };
 
@@ -211,18 +214,21 @@ export async function runAgentLoop(
   getMemoryKb: () => number = () => 0,
   loopOptions: LoopOptions = {},
 ): Promise<AgentResult> {
-  const llm = new LLMClient(
-    config.llmApiKey,
-    config.model,
-    {
-      temperature: config.temperature,
-      maxTokens: config.maxTokens,
-      topP: config.topP,
-      frequencyPenalty: config.frequencyPenalty,
-      presencePenalty: config.presencePenalty,
-    },
-    config.llmBaseUrl,
-  );
+  const llm = new LLMClient({
+    provider: config.provider,
+    apiKey: config.llmApiKey,
+    baseUrl: config.llmBaseUrl,
+    model: config.model,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+    topP: config.topP,
+    frequencyPenalty: config.frequencyPenalty,
+    presencePenalty: config.presencePenalty,
+    modelPath: config.modelPath,
+    modelDir: config.modelDir,
+    gpuLayers: config.gpuLayers,
+    contextSize: config.contextSize,
+  });
   const urlOptions: UrlValidationOptions = {
     allowedDomains: config.allowedDomains,
     blockedDomains: config.blockedDomains,

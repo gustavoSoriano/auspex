@@ -1,6 +1,6 @@
 {
   "name": "auspex",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "AI-powered browser agent with tiered scraping — HTTP/Cheerio first, Playwright as fallback",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,7 @@
     "example:websearch": "tsx examples/websearch.ts",
     "example:scraper": "tsx examples/scraper.ts",
     "example:macro": "tsx examples/macro.ts",
+    "example:local": "tsx examples/local.ts",
     "install:browser": "playwright install chromium",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -40,6 +41,7 @@
   "license": "MIT",
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
+    "agentium": "^0.1.0",
     "cheerio": "^1.2.0",
     "got-scraping": "^4.0.4",
     "jsdom": "^25.0.1",

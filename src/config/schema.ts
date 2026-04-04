@@ -19,7 +19,8 @@ const cookieSchema = z.object({
 });
 
 export const agentConfigSchema = z.object({
-  llmApiKey: z.string().min(1, "llmApiKey is required"),
+  provider: z.enum(["openai", "agentium"]).default(DEFAULTS.provider),
+  llmApiKey: z.string().optional(),
   llmBaseUrl: z.string().url().optional(),
   port: z.number().int().positive().default(9222),
   model: z.string().default(DEFAULTS.model),
@@ -44,8 +45,14 @@ export const agentConfigSchema = z.object({
   vision: z.boolean().default(DEFAULTS.vision),
   screenshotQuality: z.number().int().min(1).max(100).default(DEFAULTS.screenshotQuality),
   searxngUrl: z.string().url().optional(),
-}).transform((data) => {
-  // Resolve searxngUrl from env var if not provided in config
+  modelPath: z.string().optional(),
+  modelDir: z.string().optional(),
+  gpuLayers: z.union([z.number(), z.literal("auto")]).optional(),
+  contextSize: z.union([z.number(), z.literal("auto")]).optional(),
+}).refine(
+  (data) => data.provider !== "openai" || (data.llmApiKey && data.llmApiKey.length > 0),
+  { message: "llmApiKey is required when provider is 'openai'", path: ["llmApiKey"] },
+).transform((data) => {
   if (!data.searxngUrl && process.env.SEARXNG_URL) {
     return { ...data, searxngUrl: process.env.SEARXNG_URL };
   }

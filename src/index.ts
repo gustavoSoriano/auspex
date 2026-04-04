@@ -21,6 +21,11 @@ export type {
   ReplayableAction,
 } from "./types.js";
 
+// ── LLM Adapters ──────────────────────────────────────────────────────────
+export type { ILLMAdapter, LLMProvider, LLMRequestParams, LLMResponse } from "./llm/types.js";
+export { OpenAIAdapter } from "./llm/adapter-openai.js";
+export { AgentiumAdapter } from "./llm/adapter-agentium.js";
+
 // ── Macro (record & replay) ──────────────────────────────────────────────────
 export {
   buildMacro,
