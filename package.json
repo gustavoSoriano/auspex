@@ -25,7 +25,8 @@
     "example:local": "tsx examples/local.ts",
     "install:browser": "playwright install chromium",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "auspex",
