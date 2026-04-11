@@ -166,7 +166,7 @@ export function extractLinksWithMetadata(
       seen.add(resolved);
       const title = ($(el).text().trim() || $(el).attr("title") || "")
         .replace(/\s+/g, " ")
-        .slice(0, 200);
+        .slice(0, 500);  // Increased: allow longer link titles
       links.push({ url: resolved, title: title || undefined });
     }
   });

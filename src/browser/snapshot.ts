@@ -2,12 +2,14 @@ import type { Page } from "playwright-core";
 import * as cheerio from "cheerio";
 import type { PageSnapshot, SnapshotLink, SnapshotForm, SnapshotInput } from "../types.js";
 
-// ─── Snapshot limits (calibrated to save tokens) ─────────────────────────────
-const TEXT_LIMIT   = 3_500; // chars of page text sent to LLM
-const LINKS_LIMIT  = 25;    // max links per snapshot
-const FORMS_LIMIT  = 5;     // max forms per snapshot
-const INPUTS_LIMIT = 10;    // max inputs per form
-const A11Y_LIMIT   = 3_000; // chars of accessibility tree YAML
+// ─── Snapshot limits (calibrated for quality, safe within ~100K context) ─────
+// Assuming ~4 chars/token, these limits keep snapshots well under model limits
+// while preserving complete page content for better agent decisions
+const TEXT_LIMIT   = 50_000; // chars of page text sent to LLM (~12K tokens)
+const LINKS_LIMIT  = 100;    // max links per snapshot (covers most pages)
+const FORMS_LIMIT  = 20;     // max forms per snapshot
+const INPUTS_LIMIT = 30;     // max inputs per form
+const A11Y_LIMIT   = 25_000; // chars of accessibility tree YAML (~6K tokens)
 
 // ─── Noise link filter ───────────────────────────────────────────────────────
 const NOISE_HOSTS = new Set([
@@ -46,7 +48,7 @@ function evaluatePageData(page: Page): Promise<RawSnapshotData> {
     const rawLinks = Array.from(document.querySelectorAll("a[href]"))
       .slice(0, limits.linksLimit * 3)
       .map((el, i) => ({
-        text: (el as HTMLAnchorElement).innerText.trim().slice(0, 80),
+        text: (el as HTMLAnchorElement).innerText.trim().slice(0, 200),
         href: (el as HTMLAnchorElement).href,
         index: i,
       }));
@@ -127,7 +129,7 @@ export function snapshotFromHtml(html: string, url: string): PageSnapshot {
     // Pre-filter raw href before URL resolution (# becomes full URL otherwise)
     if (!href || href === "#" || href.startsWith("javascript:") ||
         href.startsWith("mailto:") || href.startsWith("tel:")) return;
-    const linkText = $(el).text().trim().slice(0, 80);
+    const linkText = $(el).text().trim().slice(0, 200);
     let absoluteHref = href;
     try {
       absoluteHref = href.startsWith("http") ? href : new URL(href, url).href;
@@ -170,7 +172,7 @@ export async function captureScreenshot(page: Page, quality: number): Promise<st
 
 // ─── Format snapshot for LLM ─────────────────────────────────────────────────
 
-const MAX_URL_LEN = 150;
+const MAX_URL_LEN = 500;
 
 function truncUrl(url: string): string {
   if (url.length <= MAX_URL_LEN) return url;
@@ -188,7 +190,7 @@ export function formatSnapshot(snapshot: PageSnapshot): string {
   const lines: string[] = [
     `## Current Page`,
     `URL: ${truncUrl(snapshot.url)}`,
-    `Title: ${snapshot.title.slice(0, 200)}`,
+    `Title: ${snapshot.title.slice(0, 500)}`,
     "",
     `### Page Text`,
     snapshot.text,
@@ -202,8 +204,8 @@ export function formatSnapshot(snapshot: PageSnapshot): string {
       const r = snapshot.searchResults[i];
       lines.push(`${i + 1}. ${r.title}`);
       lines.push(`   ${truncUrl(r.url)}`);
-      // Truncate content to avoid too long snapshots
-      const contentPreview = r.content.length > 200 ? r.content.slice(0, 200) + "..." : r.content;
+      // Show full content with reasonable truncation for very long results
+      const contentPreview = r.content.length > 500 ? r.content.slice(0, 500) + "..." : r.content;
       lines.push(`   ${contentPreview}`);
       if (r.score > 0) {
         lines.push(`   Score: ${r.score}`);

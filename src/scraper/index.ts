@@ -162,7 +162,7 @@ export class Scraper {
    */
   async map(url: string, options: MapOptions = {}): Promise<MapResult> {
     const startTime = Date.now();
-    const limit = options.limit ?? 500;
+    const limit = options.limit ?? 2000;  // Increased: allow comprehensive link discovery
     const includeSubdomains = options.includeSubdomains ?? true;
     const ignoreQueryParameters = options.ignoreQueryParameters ?? true;
     const searchTerm = options.search?.toLowerCase().trim();

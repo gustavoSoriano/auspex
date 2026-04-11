@@ -1,4 +1,5 @@
 import type { AgentResult, ActionRecord } from "../types.js";
+import { DEFAULTS } from "../config/defaults.js";
 
 function describeAction(record: ActionRecord): string {
   const { action } = record;
@@ -104,7 +105,9 @@ export function generateReport(result: AgentResult, url: string, prompt: string)
     const dataStr = typeof result.data === "string"
       ? result.data
       : JSON.stringify(result.data, null, 2);
-    const maxResultChars = 10_000;
+    // Use config maxResultLength for display, but cap at 150K for console safety
+    // Full result is still available in result.data (not truncated)
+    const maxResultChars = Math.min(150_000, DEFAULTS.maxResultLength);
     lines.push(dataStr.length <= maxResultChars ? dataStr : dataStr.slice(0, maxResultChars) + "\n... (truncated)");
     lines.push("");
   }
