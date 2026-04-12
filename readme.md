@@ -3,6 +3,10 @@
 ### NPM
 https://www.npmjs.com/package/auspex
 
+### Documentação
+
+https://auspex.sorianox2013.workers.dev/
+
 Framework de browser automation alimentado por LLM. Voce fornece uma **URL** e um **prompt em linguagem natural** — o agent decide sozinho se basta uma requisicao HTTP ou se precisa abrir o Playwright, navega, clica, preenche formularios e retorna o resultado com um relatorio completo.
 Além disso, é compatível com Web Search através de SearXNG e funciona **100% local e gratis** via Agentium (sem API key).
 ---
